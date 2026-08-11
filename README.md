@@ -3,7 +3,8 @@
 > API de simulação de financiamento imobiliário com SAC, Price, CET e amortização
 > extraordinária.
 
-**Status:** em construção — Etapa 1 de 7 (fundação concluída). Veja o [roadmap](#roadmap).
+**Status:** em construção — Etapa 2 de 7. Núcleo financeiro pronto e testado
+(**135 testes, 99,5% de cobertura** em `domain/finance`). Veja o [roadmap](#roadmap).
 
 ---
 
@@ -69,6 +70,66 @@ As decisões técnicas e as alternativas descartadas estão registradas em
 
 ---
 
+## O núcleo financeiro
+
+TypeScript puro em [`src/domain/finance/`](src/domain/finance/) — funções sem estado, sem NestJS,
+sem Prisma, sem HTTP. Escrito com os testes primeiro: **135 testes, 99,5% de cobertura**.
+
+| Peça | Arquivo | O que resolve |
+|---|---|---|
+| Conversão de taxa | [`rate.ts`](src/domain/finance/rate.ts) | Efetiva `(1+i)^(1/12)-1` e nominal `i/12` |
+| SAC | [`sac.ts`](src/domain/finance/sac.ts) | Amortização constante, parcela decrescente |
+| Price | [`price.ts`](src/domain/finance/price.ts) | Parcela fixa, amortização crescente |
+| Encargos | [`schedule-common.ts`](src/domain/finance/schedule-common.ts) | MIP, DFI e taxa de administração |
+| CET | [`cet.ts`](src/domain/finance/cet.ts) | TIR do fluxo por Newton-Raphson + bissecção |
+| Aporte extraordinário | [`extra-payment.ts`](src/domain/finance/extra-payment.ts) | Reduzir prazo ou reduzir parcela |
+
+### Duas convenções de taxa, porque o mercado usa as duas
+
+A taxa é contratada ao ano, mas o cálculo é mensal — e há duas formas de converter:
+
+- **Efetiva equivalente** `(1 + i_a)^(1/12) − 1`, coerente com juros compostos: doze meses dessa
+  taxa capitalizam de volta exatamente na taxa anual contratada.
+- **Nominal linear** `i_a / 12`, que ignora a capitalização e resulta numa taxa mensal maior.
+
+Não é detalhe acadêmico: **12% a.a. pela convenção nominal capitalizam em 12,68% a.a. efetivos.**
+Por isso a convenção é parâmetro de entrada, com a efetiva como default ([ADR-004](docs/decisions.md)).
+
+### CET: o número que realmente permite comparar bancos
+
+O CET é a **TIR** do fluxo de caixa — a taxa que iguala o valor presente de tudo que o cliente paga
+ao que ele efetivamente recebeu. Como inclui MIP, DFI, taxa administrativa e despesas iniciais, é
+sempre maior que a taxa de juros anunciada.
+
+Não há solução fechada: o cálculo é numérico. A implementação usa **Newton-Raphson com fallback
+para bissecção** — Newton converge em 4 ou 5 iterações, e quando a derivada degenera ou o passo
+escapa do intervalo, a bissecção assume, mais lenta e infalível. Se nenhum dos dois convergir em
+100 iterações, o resultado é um **erro explícito**, nunca um `NaN` disfarçado de taxa.
+
+Dois defeitos reais encontrados pelos testes deste método estão registrados nas
+[ADR-011](docs/decisions.md) e [ADR-012](docs/decisions.md) — incluindo um caso em que o método
+devolvia uma taxa plausível cujo VPL não era zero.
+
+### Aporte extraordinário: reduzir prazo ou reduzir parcela?
+
+A pergunta que todo mutuário faz no balcão, respondida com números:
+
+- `REDUCE_TERM` — abate o saldo e mantém a parcela; o contrato acaba antes.
+- `REDUCE_INSTALLMENT` — abate o saldo e recalcula a parcela para o prazo restante.
+
+O resumo devolve juros economizados, encargos economizados e meses eliminados. **Reduzir o prazo
+economiza mais juros** — o teste que prova isso está em
+[`extra-payment.spec.ts`](src/domain/finance/extra-payment.spec.ts).
+
+### Verificação independente
+
+Além dos testes unitários, o SAC e o Price foram conferidos contra uma implementação
+independente em Python com `Decimal` de precisão arbitrária. Para R$ 400.000 em 360 meses a
+0,8% a.m., os dois resultados batem **ao centavo**: R$ 577.600,57 de juros no SAC e
+R$ 821.350,69 no Price, com saldo devedor final exatamente zero nos dois sistemas.
+
+---
+
 ## Dinheiro nunca é `float`
 
 Um financiamento de 420 meses acumula erro de arredondamento a cada parcela. Em ponto flutuante
@@ -91,7 +152,7 @@ O raciocínio completo, com as alternativas descartadas, está na
 ## Roadmap
 
 - [x] **Etapa 0** — Fundação: TypeScript strict, ESLint, Prettier, Jest, Docker Compose com Postgres, CI
-- [ ] **Etapa 1** — Núcleo financeiro em TDD: SAC, Price, encargos, CET, aporte extraordinário
+- [x] **Etapa 1** — Núcleo financeiro em TDD: SAC, Price, encargos, CET, aporte extraordinário
 - [ ] **Etapa 2** — Domínio e casos de uso com repositórios em memória
 - [ ] **Etapa 3** — Persistência: Prisma, migrations, repositórios e testes de integração
 - [ ] **Etapa 4** — Autenticação JWT com access e refresh token

@@ -103,9 +103,104 @@ prematuro.
 diferentes: taxa efetiva equivalente `(1+i)^(1/12)-1` e taxa nominal linear `i/12`. Elas produzem
 parcelas diferentes para a mesma taxa contratada.
 
-**Decisão.** _(a preencher — suportar ambas via parâmetro de entrada e definir qual é o default)_
+**Decisão.** Suportar **as duas**, com a convenção como parâmetro de entrada
+(`rateConvention`) e **efetiva como default**. A efetiva é a convenção coerente com juros
+compostos: doze meses da taxa mensal capitalizam de volta exatamente na taxa anual contratada,
+propriedade verificada em teste.
 
-**Alternativa descartada.** _(a preencher)_
+**Alternativa descartada.** Adotar só uma. Fixar a nominal simplificaria o código, mas produz uma
+taxa mensal maior — 12% a.a. nominal capitaliza em 12,68% a.a. efetivos — e esconderia do usuário
+justamente a diferença que o projeto quer expor. Fixar só a efetiva impediria reproduzir contratos
+reais que usam a linear.
+
+**Custo assumido.** Um parâmetro a mais em toda a superfície da API, e a obrigação de documentar a
+diferença — do contrário o usuário compara duas simulações que não são comparáveis. É um custo de
+clareza, e clareza é o produto aqui.
+
+---
+
+## ADR-009 — Política do resíduo de arredondamento na tabela de amortização
+
+**Contexto.** Trabalhando em centavos inteiros (ADR-002), nem `principal / n` (SAC) nem o PMT
+(Price) resultam em valores exatos. Sem uma política, o saldo devedor não fecha em zero — o
+defeito clássico do simulador que termina com R$ 0,03 em aberto.
+
+**Decisão.** **Fechar na última parcela.** No SAC, a divisão inteira é feita uma vez e o resto é
+somado à última amortização. No Price, a amortização do último mês é *definida* como o saldo de
+abertura remanescente, e a prestação daquele mês é recomposta a partir dela. O saldo termina em
+zero por construção, não por sorte.
+
+**Alternativa descartada.** Distribuir o resíduo centavo a centavo pelas primeiras parcelas.
+Nenhuma parcela destoaria mais que um centavo, mas no SAC as amortizações deixariam de ser
+idênticas — num sistema cujo nome é "amortização constante". Descartada por contradizer o modelo
+que a tabela deveria comunicar.
+
+**Custo assumido.** A última parcela difere das demais. E o desvio **não é de centavos**: num
+contrato de R$ 400 mil em 360 meses, arredondar o PMT em até meio centavo por mês e deixar esse
+desvio render juros acumula cerca de **R$ 13,00** na parcela final — 0,32% dela. Isso é o custo
+real da aritmética inteira, não um defeito, e por isso o teste correspondente afirma um limite
+*relativo* (< 1% do PMT) em vez de um limite absoluto em centavos.
+
+---
+
+## ADR-010 — Base de cálculo do MIP
+
+**Contexto.** O MIP incide sobre o saldo devedor, mas "saldo devedor do mês k" é ambíguo: pode ser
+o saldo de abertura, antes do pagamento, ou o de fechamento, após a amortização.
+
+**Decisão.** **Saldo de abertura** — a mesma base usada para os juros do mês. Manter juros e
+seguro olhando para o mesmo saldo evita a incoerência de duas linhas da mesma parcela calculadas
+sobre bases diferentes.
+
+**Alternativa descartada.** Saldo após a amortização, sob o argumento de que o seguro cobre o
+risco remanescente. Descartada pela inconsistência com os juros e por um efeito colateral
+esquisito: na última parcela o saldo é zero, logo o MIP seria zero — o mutuário ficaria descoberto
+justamente no mês final.
+
+**Custo assumido.** A última parcela ainda cobra MIP sobre o saldo que está sendo quitado.
+Defensável (a cobertura vale pelo mês inteiro), mas é uma pergunta que aparece.
+
+---
+
+## ADR-011 — Tolerância do VPL e largura do intervalo são grandezas distintas no CET
+
+**Contexto.** A bissecção do cálculo da TIR tem dois critérios de parada possíveis: o VPL ficou
+próximo de zero, ou o intervalo de busca ficou estreito demais para continuar. A primeira
+implementação usou a **mesma** tolerância (`1e-9`) para os dois.
+
+**Decisão.** Separar as duas constantes. A tolerância do VPL segue em `1e-9` (unidades
+monetárias); a largura mínima do intervalo passa a ser `1e-15` (unidades de taxa), o limite
+prático de resolução de um `double` nessa faixa. São ~51 iterações para estreitar de `[-0.9999, 1]`
+até lá, dentro do teto de 100.
+
+**Alternativa descartada.** Manter um único parâmetro, por simplicidade. Descartada porque estava
+**errado**: um teste de fallback expôs uma TIR devolvida com VPL residual de `-5,1e-5` — a
+bissecção parava por largura de intervalo enquanto o VPL ainda não havia convergido. Tolerância em
+reais e largura em taxa não são comparáveis, e tratá-las como se fossem produz uma resposta
+plausível e errada.
+
+**Custo assumido.** Mais um parâmetro interno para explicar. Em compensação, o método passou a ser
+verificado por invariante — `VPL(TIR) ≈ 0` — e não por inspeção visual do resultado.
+
+---
+
+## ADR-012 — Saneamento de ruído numérico na taxa do CET
+
+**Contexto.** Num contrato sem juros e sem encargos, a TIR é exatamente zero. O método numérico,
+porém, devolve algo como `-2,18e-17`. Esse "zero negativo" era propagado adiante e fazia a
+anualização — que rejeita taxa negativa — lançar erro num caso perfeitamente válido.
+
+**Decisão.** Colapsar em zero exato qualquer taxa cujo valor absoluto seja menor que `1e-12`
+(`RATE_NOISE_FLOOR`). Dez ordens de grandeza abaixo de um centésimo de ponto-base: nenhuma taxa
+real vive nessa faixa, então o saneamento não pode mascarar um resultado legítimo.
+
+**Alternativa descartada.** Relaxar a validação de `monthlyToAnnualRate` para aceitar taxas
+levemente negativas. Descartada por tratar o sintoma no lugar errado: a validação está correta em
+rejeitar taxa negativa, e o ruído deve ser eliminado onde nasce — na saída do método numérico.
+
+**Custo assumido.** Uma constante mágica a mais, ainda que documentada e justificada. E TIRs
+genuinamente minúsculas seriam arredondadas para zero — irrelevante no domínio, mas é uma
+suposição sobre o domínio embutida no código numérico.
 
 ---
 
@@ -113,10 +208,26 @@ parcelas diferentes para a mesma taxa contratada.
 
 **Contexto.** O CET é a TIR do fluxo de caixa e não tem solução fechada. Exige método iterativo.
 
-**Decisão.** _(a preencher — Newton-Raphson com fallback para bissecção; registrar tolerância,
-limite de iterações e o que acontece quando não converge)_
+**Decisão.** **Newton-Raphson com fallback para bissecção.** Newton converge quadraticamente — 4
+ou 5 iterações no caso típico — mas depende da derivada do VPL: se ela degenera ou o passo sai do
+intervalo válido, o método é abandonado e a bissecção assume. A bissecção é linear, portanto
+lenta, mas infalível enquanto houver troca de sinal no intervalo.
 
-**Alternativa descartada.** _(a preencher)_
+Parâmetros explícitos: tolerância do VPL `1e-9`, máximo de 100 iterações, intervalo de busca
+`[-99,99%, 100%]` ao mês. **Quando não converge, lança `CetDidNotConvergeError`** — nunca devolve
+`NaN` disfarçado de taxa. O fluxo é validado antes: sem ao menos uma entrada e uma saída, não há
+raiz a procurar (regra de sinal de Descartes).
+
+**Alternativa descartada.** Só bissecção, que é mais simples e sempre converge: descartada pelo
+número de iterações, que importa quando o CET é recalculado a cada leitura (ADR-003). Só Newton:
+descartada por poder divergir sem aviso, devolvendo um número plausível e errado — o pior modo de
+falha possível num cálculo financeiro.
+
+**Custo assumido.** Dois métodos para manter e testar, e um espaço de estados maior — os testes
+precisam forçar o caminho do fallback de propósito (chute inicial absurdo) para cobri-lo. Ver
+também [ADR-011](#adr-011--tolerância-do-vpl-e-largura-do-intervalo-são-grandezas-distintas-no-cet)
+e [ADR-012](#adr-012--saneamento-de-ruído-numérico-na-taxa-do-cet), ambas nascidas de defeitos
+reais encontrados durante os testes deste método.
 
 ---
 
