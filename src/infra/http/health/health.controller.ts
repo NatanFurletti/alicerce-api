@@ -1,5 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 
+import { Public } from '../../auth/jwt-auth.guard';
+
 interface HealthResponse {
   status: 'ok';
   uptimeSeconds: number;
@@ -15,6 +17,9 @@ interface HealthResponse {
  */
 @Controller('health')
 export class HealthController {
+  // Público: o guard é global (AuthModule), e um healthcheck que exige token é
+  // inútil para orquestrador e load balancer.
+  @Public()
   @Get()
   check(): HealthResponse {
     return {
