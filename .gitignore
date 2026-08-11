@@ -1,0 +1,28 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+
+# Ambiente — nunca versionar credenciais
+.env
+.env.*
+!.env.example
+
+# Testes
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / SO
+.idea/
+.DS_Store
+Thumbs.db
+
+# Dumps de banco
+*.sql.gz
+*.dump

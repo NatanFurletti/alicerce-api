@@ -1,0 +1,9 @@
+# Normaliza para LF no repositório, independente do SO de quem clona.
+# O projeto é desenvolvido no Windows e roda em container Linux — sem isto,
+# o diff fica poluído e o Prettier (endOfLine: lf) briga com o checkout.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.pdf binary
