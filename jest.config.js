@@ -12,6 +12,13 @@ module.exports = {
     // Barrels só re-exportam: contá-los mede organização de arquivo, não teste.
     '!src/**/index.ts',
     '!src/**/types.ts',
+    // Repositórios e mappers Prisma são cobertos pelos testes de INTEGRAÇÃO
+    // (`npm run test:e2e`), contra o Postgres real — é o único lugar onde faz
+    // sentido testá-los. Contá-los aqui mediria a suíte errada e mascararia a
+    // cobertura real do domínio.
+    '!src/infra/database/**',
+    '!src/**/*.module.ts',
+    '!src/domain/repositories/tokens.ts',
   ],
   coverageDirectory: './coverage',
   moduleNameMapper: {
