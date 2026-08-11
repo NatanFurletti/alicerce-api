@@ -1,0 +1,106 @@
+// Schema do Alicerce.
+//
+// Convenções deste arquivo:
+//
+// - **Dinheiro em BigInt** (ADR-002). Todo valor monetário é inteiro de centavos, do
+//   núcleo financeiro ao banco. BIGINT é 64 bits e a aritmética no Postgres também é
+//   exata; INTEGER estouraria em imóvel acima de ~R$ 21 milhões. O mapper converte
+//   para `number` na fronteira, seguro até 2^53 centavos (~90 trilhões de reais).
+// - **Taxas em Float**, e não em BigInt: são fatores adimensionais, não dinheiro. O
+//   arredondamento acontece no produto (ver `multiplyByRate`).
+// - **A tabela de amortização não existe aqui** (ADR-003). Ela é derivada dos
+//   parâmetros e recalculada sob demanda; persisti-la criaria dado que pode divergir
+//   da fórmula que o gerou.
+// - **Nomes de tabela e coluna em snake_case** via `@@map`/`@map`: convenção do
+//   Postgres, e evita ter que citar identificadores com aspas em SQL manual.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @db.Uuid
+  name         String   @db.VarChar(200)
+  email        String   @unique @db.VarChar(320)
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  simulations Simulation[]
+
+  @@map("users")
+}
+
+model Simulation {
+  id String @id @db.Uuid
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Valores monetários: centavos inteiros.
+  propertyValue BigInt  @map("property_value")
+  downPayment   BigInt  @map("down_payment")
+  monthlyIncome BigInt? @map("monthly_income")
+
+  termMonths         Int                @map("term_months")
+  annualRate         Float              @map("annual_rate")
+  rateConvention     RateConvention     @map("rate_convention")
+  amortizationSystem AmortizationSystem @map("amortization_system")
+
+  // Encargos: alíquotas mensais e taxa fixa em centavos. Parâmetros de mercado
+  // gravados junto da simulação — mudar o default não pode alterar o passado.
+  mipMonthlyRate Float  @map("mip_monthly_rate")
+  dfiMonthlyRate Float  @map("dfi_monthly_rate")
+  adminFeeCents  BigInt @map("admin_fee_cents")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  extraPayments ExtraPayment[]
+
+  // Índice composto e não apenas em `userId`: toda consulta é escopada ao dono e
+  // ordenada por data (ADR-015), então o índice cobre filtro e ordenação de uma vez.
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("simulations")
+}
+
+model ExtraPayment {
+  id String @id @db.Uuid
+
+  simulationId String     @map("simulation_id") @db.Uuid
+  simulation   Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+
+  monthNumber Int                  @map("month_number")
+  amount      BigInt
+  strategy    ExtraPaymentStrategy
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([simulationId, monthNumber])
+  @@map("extra_payments")
+}
+
+enum RateConvention {
+  EFFECTIVE
+  NOMINAL
+
+  @@map("rate_convention")
+}
+
+enum AmortizationSystem {
+  SAC
+  PRICE
+
+  @@map("amortization_system")
+}
+
+enum ExtraPaymentStrategy {
+  REDUCE_TERM
+  REDUCE_INSTALLMENT
+
+  @@map("extra_payment_strategy")
+}
