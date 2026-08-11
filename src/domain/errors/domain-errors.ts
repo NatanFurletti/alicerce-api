@@ -40,10 +40,78 @@ export class InvalidTermError extends DomainError {
 export class InvalidAmountError extends DomainError {
   readonly code = 'INVALID_AMOUNT';
 
-  constructor(field: string, value: number) {
+  /**
+   * `reason` permite descrever violações que não são "valor fora da faixa" — divisão
+   * por zero no cálculo de razão, por exemplo — sem precisar de uma classe de erro
+   * nova para cada caso.
+   */
+  constructor(field: string, value: number, reason?: string) {
     super(
-      `Valor inválido para ${field}: ${value}. Deve ser inteiro de centavos não negativo.`,
+      reason === undefined
+        ? `Valor inválido para ${field}: ${value}. Deve ser inteiro de centavos não negativo.`
+        : `Valor inválido para ${field}: ${value}. ${reason}`,
     );
+  }
+}
+
+/** Endereço de e-mail malformado. */
+export class InvalidEmailError extends DomainError {
+  readonly code = 'INVALID_EMAIL';
+
+  constructor(value: string) {
+    super(`E-mail inválido: "${value}".`);
+  }
+}
+
+/**
+ * Simulação não encontrada — ou não pertence a quem pediu.
+ *
+ * **Um único erro para os dois casos, de propósito.** Responder 404 para inexistente e
+ * 403 para "existe mas é de outro" permitiria enumerar ids alheios pelo código de
+ * status. Do ponto de vista de quem pergunta, um recurso que ele não pode ver não
+ * existe.
+ */
+export class SimulationNotFoundError extends DomainError {
+  readonly code = 'SIMULATION_NOT_FOUND';
+
+  constructor(id: string) {
+    super(`Simulação ${id} não encontrada.`);
+  }
+}
+
+/** E-mail já cadastrado. */
+export class EmailAlreadyInUseError extends DomainError {
+  readonly code = 'EMAIL_ALREADY_IN_USE';
+
+  constructor(email: string) {
+    super(`O e-mail ${email} já está em uso.`);
+  }
+}
+
+/** Parâmetros de paginação fora da faixa permitida. */
+export class InvalidPaginationError extends DomainError {
+  readonly code = 'INVALID_PAGINATION';
+
+  constructor(reason: string) {
+    super(`Paginação inválida: ${reason}`);
+  }
+}
+
+/** Nome de usuário vazio ou longo demais. */
+export class InvalidUserNameError extends DomainError {
+  readonly code = 'INVALID_USER_NAME';
+
+  constructor(reason: string) {
+    super(`Nome de usuário inválido: ${reason}`);
+  }
+}
+
+/** Usuário sem credencial — nunca deve ser possível persistir um. */
+export class MissingPasswordHashError extends DomainError {
+  readonly code = 'MISSING_PASSWORD_HASH';
+
+  constructor() {
+    super('Usuário não pode ser criado sem hash de senha.');
   }
 }
 
@@ -53,6 +121,69 @@ export class InvalidPrincipalError extends DomainError {
 
   constructor(principal: number) {
     super(`Principal inválido: ${principal}. Deve ser maior que zero.`);
+  }
+}
+
+/**
+ * Erros de elegibilidade (SPEC 2.7).
+ *
+ * Cada violação tem classe própria, e não uma mensagem genérica: quem consome a API
+ * precisa saber SE foi a entrada, o prazo ou a renda que reprovou a simulação — são
+ * ações corretivas diferentes. Todos carregam o limite violado para que a resposta
+ * HTTP possa dizer "máximo 80%", e não apenas "inválido".
+ */
+
+/** Financiado excede o percentual máximo do valor do imóvel (entrada insuficiente). */
+export class LtvExceededError extends DomainError {
+  readonly code = 'LTV_EXCEEDED';
+
+  constructor(
+    readonly actualPercent: number,
+    readonly maxPercent: number,
+  ) {
+    super(
+      `LTV de ${actualPercent.toFixed(2)}% excede o máximo de ${maxPercent}%. ` +
+        'Aumente o valor da entrada.',
+    );
+  }
+}
+
+/** Entrada maior ou igual ao valor do imóvel — não há o que financiar. */
+export class DownPaymentExceedsPropertyValueError extends DomainError {
+  readonly code = 'DOWN_PAYMENT_EXCEEDS_PROPERTY_VALUE';
+
+  constructor(downPaymentCents: number, propertyValueCents: number) {
+    super(
+      `Entrada de ${downPaymentCents} centavos é maior ou igual ao valor do imóvel ` +
+        `(${propertyValueCents} centavos). Não há saldo a financiar.`,
+    );
+  }
+}
+
+/** Prazo solicitado acima do máximo permitido pela política. */
+export class TermExceedsMaximumError extends DomainError {
+  readonly code = 'TERM_EXCEEDS_MAXIMUM';
+
+  constructor(
+    readonly termMonths: number,
+    readonly maxTermMonths: number,
+  ) {
+    super(`Prazo de ${termMonths} meses excede o máximo de ${maxTermMonths} meses.`);
+  }
+}
+
+/** Desembolso mensal compromete parcela excessiva da renda declarada. */
+export class IncomeCommitmentExceededError extends DomainError {
+  readonly code = 'INCOME_COMMITMENT_EXCEEDED';
+
+  constructor(
+    readonly actualPercent: number,
+    readonly maxPercent: number,
+  ) {
+    super(
+      `A primeira parcela compromete ${actualPercent.toFixed(2)}% da renda, ` +
+        `acima do máximo de ${maxPercent}%.`,
+    );
   }
 }
 
