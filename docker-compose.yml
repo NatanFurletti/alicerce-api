@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: alicerce-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-alicerce}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alicerce}
+      POSTGRES_DB: ${POSTGRES_DB:-alicerce}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - alicerce-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Sem healthcheck o CI tenta migrar antes de o Postgres aceitar conexão.
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-alicerce} -d ${POSTGRES_DB:-alicerce}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: alicerce-postgres-test
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-alicerce}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alicerce}
+      POSTGRES_DB: ${POSTGRES_DB:-alicerce}_test
+    ports:
+      - '${POSTGRES_TEST_PORT:-5433}:5432'
+    # tmpfs: banco de teste vive em memória e morre com o container.
+    # Rápido e garante que nenhum teste e2e escreva no banco de desenvolvimento.
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-alicerce} -d ${POSTGRES_DB:-alicerce}_test']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  alicerce-pgdata:
