@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  quality:
+    name: Lint, typecheck e testes
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: alicerce
+          POSTGRES_PASSWORD: alicerce
+          POSTGRES_DB: alicerce_test
+        ports:
+          - 5433:5432
+        # Sem isto os passos começam antes de o banco aceitar conexão.
+        options: >-
+          --health-cmd "pg_isready -U alicerce -d alicerce_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://alicerce:alicerce@localhost:5433/alicerce_test?schema=public
+      DATABASE_URL_TEST: postgresql://alicerce:alicerce@localhost:5433/alicerce_test?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` respeita o lockfile e falha se ele divergir do package.json.
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Verificar formatação
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Testes unitários com cobertura
+        run: npm run test:cov
+
+      - name: Testes e2e
+        run: npm run test:e2e
+
+      - name: Build
+        run: npm run build
