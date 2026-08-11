@@ -39,8 +39,14 @@ jobs:
           cache: npm
 
       # `npm ci` respeita o lockfile e falha se ele divergir do package.json.
+      # O postinstall já roda `prisma generate`.
       - name: Instalar dependências
         run: npm ci
+
+      # `migrate deploy` e não `migrate dev`: aplica o que está versionado sem gerar
+      # migration nova. É o mesmo comando do deploy em produção.
+      - name: Aplicar migrations no banco de teste
+        run: npm run prisma:deploy
 
       - name: Verificar formatação
         run: npm run format:check

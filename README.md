@@ -3,8 +3,9 @@
 > API de simulação de financiamento imobiliário com SAC, Price, CET e amortização
 > extraordinária.
 
-**Status:** em construção — Etapa 3 de 7. Núcleo financeiro, domínio e casos de uso prontos
-(**259 testes, 98,8% de cobertura**), ainda sem banco. Veja o [roadmap](#roadmap).
+**Status:** em construção — Etapa 4 de 7. Núcleo financeiro, domínio, casos de uso e persistência
+prontos (**276 testes unitários + 37 de integração**, 98,8% de cobertura). Falta autenticação e a
+camada HTTP. Veja o [roadmap](#roadmap).
 
 ---
 
@@ -104,6 +105,46 @@ casos de uso que tocam uma simulação existente.
 Recurso inexistente e recurso alheio devolvem **o mesmo erro**, de propósito: status diferentes
 permitiriam enumerar quais ids existem ([ADR-015](docs/decisions.md)).
 
+---
+
+## Persistência
+
+PostgreSQL 16 com Prisma. O schema guarda **apenas os parâmetros** da simulação — a tabela de
+amortização é derivada e recalculada sob demanda ([ADR-003](docs/decisions.md)).
+
+| Tabela | Observação |
+|---|---|
+| `users` | `email` com índice `UNIQUE` |
+| `simulations` | Índice composto `(user_id, created_at DESC)`, cascade a partir de `users` |
+| `extra_payments` | Índice `(simulation_id, month_number)`, cascade a partir de `simulations` |
+
+Dinheiro é `BIGINT` de centavos, coerente com a [ADR-002](docs/decisions.md) de ponta a ponta.
+Taxas são `double precision` — são fatores adimensionais, não dinheiro.
+
+### O fake não pode mentir: teste de contrato compartilhado
+
+Os casos de uso são testados contra repositórios em memória, o que os mantém rápidos e sem Docker.
+O risco é evidente: se o fake ordena por data e o Prisma esquecer o `orderBy`, todos os testes
+passam e a produção quebra.
+
+A solução é uma [suíte de contrato](test/contracts/simulation-repository.contract.ts) escrita
+contra a **interface** e executada contra as duas implementações — o fake nos testes unitários, o
+Prisma nos de integração. Os fixtures inserem fora de ordem de propósito, porque um teste de
+ordenação com fixture já ordenado passa por coincidência.
+
+Verifiquei que funciona removendo o `orderBy` do repositório Prisma: **dois casos do contrato
+falharam** contra o Postgres real ([ADR-018](docs/decisions.md)).
+
+### Unicidade de e-mail sob concorrência
+
+A checagem `findByEmail` antes de cadastrar tem uma janela TOCTOU, alargada pelo hash de senha ser
+deliberadamente lento. Testado com duas requisições concorrentes: sem proteção adicional, **dois
+usuários com o mesmo e-mail eram gravados**, ambos reportando sucesso.
+
+A garantia real é a constraint `UNIQUE`, e o repositório traduz o erro `P2002` do Prisma para o
+mesmo `EmailAlreadyInUseError` — então as duas rotas produzem o mesmo erro de domínio e a mensagem
+nunca vaza o nome interno da constraint ([ADR-019](docs/decisions.md)).
+
 As decisões técnicas e as alternativas descartadas estão registradas em
 [`docs/decisions.md`](docs/decisions.md).
 
@@ -193,7 +234,7 @@ O raciocínio completo, com as alternativas descartadas, está na
 - [x] **Etapa 0** — Fundação: TypeScript strict, ESLint, Prettier, Jest, Docker Compose com Postgres, CI
 - [x] **Etapa 1** — Núcleo financeiro em TDD: SAC, Price, encargos, CET, aporte extraordinário
 - [x] **Etapa 2** — Domínio e casos de uso com repositórios em memória
-- [ ] **Etapa 3** — Persistência: Prisma, migrations, repositórios e testes de integração
+- [x] **Etapa 3** — Persistência: Prisma, migrations, repositórios e testes de integração
 - [ ] **Etapa 4** — Autenticação JWT com access e refresh token
 - [ ] **Etapa 5** — Camada HTTP: controllers, validação, paginação, tratamento de erros
 - [ ] **Etapa 6** — Swagger, Dockerfile multi-stage, CI e deploy
@@ -212,7 +253,8 @@ git clone https://github.com/NatanFurletti/alicerce-api.git
 cd alicerce-api
 cp .env.example .env
 docker compose up -d     # sobe Postgres (dev :5432 e teste :5433)
-npm install
+npm install              # o postinstall já roda `prisma generate`
+npm run prisma:deploy    # aplica as migrations
 npm run start:dev
 ```
 

@@ -377,6 +377,100 @@ escala, mas é o argumento honesto contra.
 
 ---
 
+## ADR-017 — Isolamento dos testes de integração por TRUNCATE
+
+**Contexto.** Testes contra Postgres precisam começar de um estado conhecido. Duas abordagens
+usuais: truncar as tabelas entre casos, ou rodar cada caso dentro de uma transação revertida.
+
+**Decisão.** `TRUNCATE ... RESTART IDENTITY CASCADE` num único comando, antes de cada teste. O
+`CASCADE` respeita as chaves estrangeiras sem exigir ordem de deleção. Roda contra o container de
+teste na porta 5433, com dados em `tmpfs`.
+
+**Alternativa descartada.** Transação com rollback, que é mais rápida. Descartada por dois motivos:
+o código sob teste não poderia usar transações próprias sem recorrer a savepoints — e o
+`listByUserId` já usa `$transaction` —, e nenhum teste exercitaria um `COMMIT` real. Um bug que só
+aparece no commit (constraint deferida, trigger) passaria despercebido.
+
+**Custo assumido.** Mais lento que rollback, e impede paralelizar suítes contra o mesmo banco. O
+e2e já roda com `--runInBand`, e o banco em `tmpfs` mantém o custo irrelevante: 37 testes em ~3s.
+
+---
+
+## ADR-018 — Teste de contrato compartilhado entre fake e Prisma
+
+**Contexto.** Os casos de uso da Etapa 2 são testados contra repositórios em memória. Isso os
+torna rápidos e independentes de Docker, mas cria um risco concreto: se o fake ordena por data
+decrescente e a implementação Prisma esquecer o `orderBy`, os 259 testes continuam verdes e a
+produção quebra. O fake mentiria sobre o contrato.
+
+**Decisão.** Uma suíte única (`test/contracts/simulation-repository.contract.ts`) escrita contra a
+**interface**, executada contra as duas implementações: na suíte unitária para o fake, na e2e para
+o Prisma. Toda garantia que um caso de uso assume — escopo por usuário, ordenação, semântica de
+paginação, fidelidade do mapper — vira um caso ali.
+
+Os fixtures inserem **fora de ordem** de propósito: um teste de ordenação cujo fixture já está
+ordenado passa por coincidência, mesmo sem `ORDER BY`.
+
+**Verificação de que funciona.** Removi o `orderBy` do repositório Prisma: dois casos do contrato
+falharam contra o Postgres. Com o fake sozinho, o mesmo bug passaria despercebido.
+
+**Alternativa descartada.** Testar cada implementação por conta própria. Mais liberdade para cobrir
+particularidades, mas nada garantiria que as duas concordam — que é exatamente a propriedade em
+jogo.
+
+**Custo assumido.** O contrato precisa ser genérico o bastante para as duas, então detalhes
+específicos do Postgres (comportamento de `bigint`, timezone) ficam em testes de integração
+separados. E ids de teste tiveram que virar UUID determinístico, já que o schema usa `@db.Uuid`.
+
+---
+
+## ADR-019 — Unicidade de e-mail garantida pelo banco, não pelo caso de uso
+
+**Contexto.** `RegisterUserUseCase` consulta `findByEmail` antes de criar. Entre essa consulta e o
+`INSERT` existe uma janela — TOCTOU — e ela é larga justamente porque o hash da senha é
+deliberadamente lento.
+
+**Decisão.** Manter a checagem prévia **e** traduzir o erro `P2002` do Prisma para
+`EmailAlreadyInUseError` no repositório. A constraint `UNIQUE` é a garantia real, porque
+verificação e escrita são atômicas dentro do banco; a checagem prévia serve para mensagem amigável
+e para evitar o custo do argon2 no caso comum. As duas rotas produzem o mesmo erro de domínio.
+
+**Verificação de que era um problema real.** Com um hasher lento simulando argon2, duas requisições
+concorrentes ao mesmo e-mail resultavam em **dois usuários gravados**, ambas reportando sucesso.
+Com a tradução do `P2002`, o teste de integração confirma: uma passa, a outra recebe
+`EmailAlreadyInUseError`, e o banco fica com exatamente um registro.
+
+**Alternativa descartada.** Remover a checagem prévia e depender só da constraint. Correto e mais
+simples, mas pagaria o custo do hash em toda tentativa duplicada.
+
+**Custo assumido.** A regra existe em dois lugares, e um leitor desatento pode achar que a checagem
+prévia é a proteção. Daí o comentário explícito nos dois pontos.
+
+---
+
+## ADR-020 — Tokens de injeção no domínio
+
+**Contexto.** Interfaces do TypeScript não existem em runtime, então `SimulationRepository` não
+serve como token de injeção do NestJS. É preciso um valor concreto para amarrar a interface à
+implementação.
+
+**Decisão.** Constantes de string em `domain/repositories/tokens.ts`, e um único módulo
+(`DatabaseModule`) fazendo a amarração. O token vive no domínio, junto da interface que nomeia,
+porque faz parte do contrato — quem o consome é o caso de uso, não a infraestrutura.
+
+`const` de string em vez de `Symbol`: aparecem legíveis nas mensagens de erro do Nest quando um
+provider não está registrado.
+
+**Alternativa descartada.** Classes abstratas como token, que funcionam em runtime e dispensam
+constantes. Descartadas porque obrigariam o domínio a declarar `abstract class` só para satisfazer
+o mecanismo de DI de um framework — exatamente o acoplamento que a ADR-001 evita.
+
+**Custo assumido.** Tokens de string não são verificados pelo compilador: `@Inject('SimulationRepo')`
+com erro de digitação só falha em runtime. Mitigado por exportar as constantes de um único arquivo
+e por um teste de integração que resolve cada token do container.
+
+---
+
 ## Modelo para novas entradas
 
 ```markdown
