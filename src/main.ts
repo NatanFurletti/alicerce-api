@@ -1,4 +1,7 @@
 import 'reflect-metadata';
+// Carrega o .env antes de qualquer outro import ler process.env.
+// A ordem importa: `loadEnv()` roda no boot e falha se DATABASE_URL não existir.
+import 'dotenv/config';
 
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
