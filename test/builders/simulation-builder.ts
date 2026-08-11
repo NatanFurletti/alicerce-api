@@ -1,5 +1,6 @@
 import { Simulation, type SimulationProps } from '../../src/domain/entities/simulation';
 import { Money } from '../../src/domain/value-objects/money.vo';
+import { uuidFor } from './uuid';
 
 /**
  * Simulação padrão para testes: R$ 500.000 com R$ 100.000 de entrada (LTV 80%),
@@ -26,4 +27,21 @@ export function makeSimulationProps(
 
 export function makeSimulation(overrides: Partial<SimulationProps> = {}): Simulation {
   return Simulation.restore(makeSimulationProps(overrides));
+}
+
+/**
+ * Como `makeSimulation`, mas com `id` e `userId` convertidos para UUID determinístico.
+ *
+ * Necessário nos testes que tocam o banco: a coluna é `@db.Uuid` e rejeita `'sim-1'`.
+ * Os testes continuam escrevendo rótulos legíveis; a conversão fica aqui.
+ */
+export function makeDbSimulation(
+  overrides: Partial<SimulationProps> & { id?: string; userId?: string } = {},
+): Simulation {
+  const props = makeSimulationProps(overrides);
+  return Simulation.restore({
+    ...props,
+    id: uuidFor(props.id),
+    userId: uuidFor(props.userId),
+  });
 }
