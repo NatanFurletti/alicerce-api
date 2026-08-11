@@ -289,6 +289,94 @@ crescerem, migrar para dependency-cruiser é o próximo passo.
 
 ---
 
+## ADR-013 — Erros de domínio como exceção, não como `Result`
+
+**Contexto.** O CLAUDE.md menciona um `Result`/`Either` em `shared/`. Casos de uso precisam
+sinalizar falha de regra de negócio — LTV estourado, simulação de outro usuário — e há duas formas:
+lançar exceção ou devolver o erro como valor.
+
+**Decisão.** **Exceções de domínio.** Casos de uso lançam `DomainError`; o exception filter da
+Etapa 5 traduz para HTTP via `instanceof`. É o caminho idiomático do NestJS, mantém o código
+linear (sem desembrulhar retorno a cada chamada) e é consistente com o núcleo financeiro, que já
+funciona assim desde a Etapa 1.
+
+**Alternativa descartada.** `Result<T, E>` como valor de retorno. A vantagem real é o compilador
+cobrar o tratamento do erro — com exceção, esquecer o `catch` compila. Descartada porque exigiria
+reescrever o núcleo já pronto e testado, e porque em NestJS o filtro global já garante que nenhuma
+exceção escapa sem virar resposta HTTP estruturada: o "esquecimento" tem uma rede embaixo.
+
+**Custo assumido.** O tipo de retorno de um caso de uso não revela quais erros ele pode produzir —
+isso vive na documentação e nos testes, não na assinatura. Mitigação parcial: todo erro tem `code`
+estável, e o Swagger da Etapa 6 vai listar os códigos possíveis por endpoint.
+
+---
+
+## ADR-014 — Regras de elegibilidade como política injetada
+
+**Contexto.** LTV máximo, comprometimento de renda e prazo máximo variam por instituição, por
+programa e ao longo do tempo. O CLAUDE.md proíbe tratá-los como fatos regulatórios hardcoded.
+
+**Decisão.** Um objeto `EligibilityPolicy` é passado ao caso de uso, que o repassa a
+`Simulation.create`. Os defaults vêm de configuração (`.env`), e o domínio **valida contra a
+política que recebe** — nunca lê `process.env` nem decide qual é o limite.
+
+**Alternativa descartada.** Constantes no domínio com override opcional. Menos fiação, mas
+colocaria números de mercado dentro de `domain/` exatamente como o CLAUDE.md proíbe — e um default
+embutido no código é lido como verdade por quem passa depois.
+
+**Custo assumido.** Mais um parâmetro em construtores e assinaturas, e a política precisa ser
+montada na fiação da aplicação. Em troca, cada teste declara a política que exercita, e mudar o
+LTV máximo em produção é configuração, não deploy de código.
+
+---
+
+## ADR-015 — Recurso inexistente e recurso alheio produzem o mesmo erro
+
+**Contexto.** O SPEC pede que um usuário nunca acesse simulação de outro, sugerindo 403. Mas
+responder 403 para "existe e é de outro" e 404 para "não existe" revela quais ids existem.
+
+**Decisão.** Um único `SimulationNotFoundError` para os dois casos, traduzido para **404**. Do
+ponto de vista de quem pergunta, um recurso que ele não pode ver não existe.
+
+A garantia é estrutural, não disciplinar: o repositório expõe `findByIdAndUserId(id, userId)` e
+**não** `findById`. O dono é argumento obrigatório, então não há como escrever a consulta sem o
+escopo. Um helper único (`findOwnedSimulation`) concentra a verificação, e um arquivo de teste
+dedicado exercita todos os casos de uso que operam sobre simulação existente.
+
+**Alternativa descartada.** 403 para recurso alheio, que é mais literal em relação ao SPEC e mais
+informativo para quem depura. Descartada porque a diferença de status é um oráculo de enumeração:
+um atacante varre ids e mapeia quais existem.
+
+**Custo assumido.** Desvia do 403 literal do SPEC, e um usuário que realmente perdeu acesso a algo
+seu receberia "não encontrado" em vez de uma mensagem mais precisa. Trade-off consciente a favor
+de não vazar existência.
+
+---
+
+## ADR-016 — Tempo e identificadores como portas injetadas
+
+**Contexto.** Casos de uso precisam de `new Date()` e de gerar ids. Chamados diretamente, tornam o
+resultado não determinístico e o teste dependente do relógio da máquina.
+
+**Decisão.** Duas portas — `Clock` e `IdGenerator` — com implementação de produção (`SystemClock`,
+`UuidGenerator`) e de teste (`FixedClock`, `SequentialIdGenerator`).
+
+O id é gerado **pela aplicação, não pelo banco**. Com sequência do Postgres, a entidade só teria
+identidade depois do `INSERT`, obrigando a construir um objeto incompleto e preenchê-lo depois.
+Gerando antes, a entidade nasce válida e o repositório vira detalhe de armazenamento. `randomUUID`
+usa o CSPRNG do sistema, então ids não são enumeráveis — relevante num recurso escopado por
+usuário.
+
+**Alternativa descartada.** Chamar `new Date()` e deixar o banco gerar o id. Mais simples e
+suficiente para o caminho feliz. Descartada porque inviabiliza testar datas de forma determinística
+e porque ids sequenciais expostos numa URL permitem inferir volume e enumerar recursos.
+
+**Custo assumido.** Duas abstrações a mais e um pouco de cerimônia na fiação. UUID como chave
+primária também é mais largo que um `bigint` e tem localidade de índice pior — irrelevante nesta
+escala, mas é o argumento honesto contra.
+
+---
+
 ## Modelo para novas entradas
 
 ```markdown

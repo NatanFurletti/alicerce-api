@@ -3,8 +3,8 @@
 > API de simulação de financiamento imobiliário com SAC, Price, CET e amortização
 > extraordinária.
 
-**Status:** em construção — Etapa 2 de 7. Núcleo financeiro pronto e testado
-(**135 testes, 99,5% de cobertura** em `domain/finance`). Veja o [roadmap](#roadmap).
+**Status:** em construção — Etapa 3 de 7. Núcleo financeiro, domínio e casos de uso prontos
+(**259 testes, 98,8% de cobertura**), ainda sem banco. Veja o [roadmap](#roadmap).
 
 ---
 
@@ -64,6 +64,45 @@ rodar toda a matemática do domínio sem subir infraestrutura.
 As fronteiras entre camadas não são só convenção: importar `@nestjs/*` ou `@prisma/client` dentro
 de `src/domain/` é **erro de ESLint** e quebra o CI. Uma regra de arquitetura que existe apenas na
 documentação é uma regra que será violada.
+
+Há ainda uma segunda tranca: [`architecture.spec.ts`](src/domain/architecture.spec.ts) varre os
+imports das camadas e falha no `npm test` se alguém desarmar o lint com um `eslint-disable`.
+
+### Casos de uso
+
+Toda a orquestração vive em [`src/application/`](src/application/) e é testada **sem banco**,
+contra repositórios em memória:
+
+| Caso de uso | O que faz |
+|---|---|
+| `RegisterUser` | Cadastra usuário; a senha em claro nunca chega ao domínio |
+| `CreateSimulation` | Valida elegibilidade, persiste e devolve o resumo |
+| `GetSimulation` | Resumo com totais e CET, escopado ao dono |
+| `GetSchedule` | Tabela de amortização paginada |
+| `ListSimulations` | Listagem paginada do próprio usuário |
+| `DeleteSimulation` | Remove, verificando propriedade antes |
+| `AddExtraPayment` | Registra aporte e devolve o impacto no contrato |
+| `CompareSystems` | SAC × Price lado a lado, sem persistir |
+
+Casos de uso dependem de **interfaces** de repositório, nunca de implementações. `Clock` e
+`IdGenerator` também são portas injetadas — é o que torna todo teste determinístico, sem depender
+do relógio da máquina ([ADR-016](docs/decisions.md)).
+
+### Um usuário nunca vê a simulação de outro
+
+A regra é estrutural, não disciplinar. O repositório expõe:
+
+```typescript
+findByIdAndUserId(id: string, userId: string): Promise<Simulation | null>
+```
+
+Não existe `findById`. **O dono é argumento obrigatório**, então é impossível escrever a consulta
+esquecendo o escopo — o compilador cobra. Um helper único concentra a verificação, e
+[`simulation-scope.spec.ts`](src/application/use-cases/simulation-scope.spec.ts) exercita todos os
+casos de uso que tocam uma simulação existente.
+
+Recurso inexistente e recurso alheio devolvem **o mesmo erro**, de propósito: status diferentes
+permitiriam enumerar quais ids existem ([ADR-015](docs/decisions.md)).
 
 As decisões técnicas e as alternativas descartadas estão registradas em
 [`docs/decisions.md`](docs/decisions.md).
@@ -153,7 +192,7 @@ O raciocínio completo, com as alternativas descartadas, está na
 
 - [x] **Etapa 0** — Fundação: TypeScript strict, ESLint, Prettier, Jest, Docker Compose com Postgres, CI
 - [x] **Etapa 1** — Núcleo financeiro em TDD: SAC, Price, encargos, CET, aporte extraordinário
-- [ ] **Etapa 2** — Domínio e casos de uso com repositórios em memória
+- [x] **Etapa 2** — Domínio e casos de uso com repositórios em memória
 - [ ] **Etapa 3** — Persistência: Prisma, migrations, repositórios e testes de integração
 - [ ] **Etapa 4** — Autenticação JWT com access e refresh token
 - [ ] **Etapa 5** — Camada HTTP: controllers, validação, paginação, tratamento de erros
