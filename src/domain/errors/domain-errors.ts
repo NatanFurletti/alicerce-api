@@ -106,6 +106,41 @@ export class InvalidUserNameError extends DomainError {
   }
 }
 
+/**
+ * Senha maior que o limite do algoritmo de hash.
+ *
+ * Existe porque o bcrypt **trunca silenciosamente** em 72 bytes: sem esta guarda, duas
+ * senhas longas com o mesmo prefixo seriam intercambiáveis, e o usuário acharia que
+ * tem uma senha mais forte do que realmente tem.
+ */
+export class PasswordTooLongError extends DomainError {
+  readonly code = 'PASSWORD_TOO_LONG';
+
+  constructor(maxBytes: number) {
+    super(`A senha excede o limite de ${maxBytes} bytes.`);
+  }
+}
+
+/** Credenciais inválidas no login. */
+export class InvalidCredentialsError extends DomainError {
+  readonly code = 'INVALID_CREDENTIALS';
+
+  constructor() {
+    // Mensagem deliberadamente genérica: distinguir "e-mail não existe" de "senha
+    // errada" permitiria enumerar quais e-mails estão cadastrados.
+    super('E-mail ou senha inválidos.');
+  }
+}
+
+/** Token ausente, malformado, expirado ou de tipo errado. */
+export class InvalidTokenError extends DomainError {
+  readonly code = 'INVALID_TOKEN';
+
+  constructor(reason = 'Token inválido ou expirado.') {
+    super(reason);
+  }
+}
+
 /** Usuário sem credencial — nunca deve ser possível persistir um. */
 export class MissingPasswordHashError extends DomainError {
   readonly code = 'MISSING_PASSWORD_HASH';
