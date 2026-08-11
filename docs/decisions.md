@@ -233,12 +233,94 @@ reais encontrados durante os testes deste método.
 
 ## ADR-006 — Estratégia de autenticação
 
-**Contexto.** _(a preencher)_
+**Contexto.** A API é escopada por usuário: cada simulação pertence a alguém, e a regra transversal
+é que ninguém acessa dado de outro. Isso exige identificar quem chama em toda requisição.
 
-**Decisão.** _(a preencher — algoritmo de hash, tempo de vida do access token, estratégia de
-refresh e onde o refresh token é armazenado)_
+**Decisão.**
 
-**Alternativa descartada.** _(a preencher)_
+**Hash: bcrypt com custo 12.** Cada incremento dobra o tempo de cálculo; 12 leva ~250-300ms, lento
+o bastante para inviabilizar força bruta em massa e rápido o bastante para não travar um login. O
+custo fica embutido no hash, então elevá-lo no futuro não invalida as senhas já cadastradas.
+
+Senhas acima de **72 bytes são rejeitadas**, não truncadas. O bcrypt ignora silenciosamente o que
+passa disso — verifiquei: uma senha de 72 caracteres + sufixo autentica com o sufixo trocado por
+qualquer outro, ou por nenhum. Sem essa guarda, o usuário acharia que tem uma senha mais forte do
+que tem. A contagem é em **bytes**, não caracteres: `á` ocupa 2, emoji chegam a 4.
+
+**Tokens: JWT, access de 15 minutos e refresh de 7 dias**, com **segredos distintos**. Não é
+redundância: o segredo de access circula em muito mais requisições, e se vazar o atacante ainda
+não forja refresh tokens. O payload carrega um campo `type`, verificado além da assinatura — sem
+ele, um refresh token de 7 dias seria aceito como credencial de acesso.
+
+**O refresh token é stateless**, sem persistência.
+
+**Alternativa descartada.** argon2id, que é a recomendação atual da OWASP e resiste melhor a ataque
+por GPU porque exige memória além de CPU. Descartado pela dependência nativa (node-gyp), que
+complicaria a imagem Docker da Etapa 6. bcrypt continua adequado com custo apropriado.
+
+Também descartado o refresh token persistido com rotação e detecção de reuso.
+
+**Custo assumido — e este é grave o suficiente para ser declarado sem rodeios.** Com refresh
+stateless **não existe revogação**:
+
+- **Não há rota de logout** que funcione de verdade. Descartar o token no cliente não o invalida.
+- **Um refresh token roubado vale até expirar** — até 7 dias — e não há como cortá-lo.
+- **Não é possível "sair de todos os dispositivos"** nem responder a um incidente invalidando
+  sessões.
+
+O que limita o dano é a vida curta do access token (15 min) e a verificação, a cada refresh, de que
+o usuário ainda existe — uma conta apagada deixa de renovar. O README **não promete** logout, e
+nenhuma rota desse tipo foi implementada: prometer e não entregar seria pior que a limitação.
+
+Se o projeto precisar de revogação, o caminho mais barato é uma coluna `token_version` em `users`,
+incluída no payload: incrementá-la invalida todos os refresh tokens daquele usuário de uma vez, ao
+custo de uma leitura que o refresh já faz.
+
+---
+
+## ADR-021 — Guard global com exceções explícitas
+
+**Contexto.** As rotas protegidas são a maioria; as públicas são `/health` e o preview de
+simulação. Há duas formas de aplicar o guard: rota a rota, ou globalmente com exceções marcadas.
+
+**Decisão.** Guard **global** via `APP_GUARD`, com `@Public()` marcando as exceções.
+
+O argumento é o modo de falha. Protegendo rota a rota, esquecer o decorator num endpoint novo o
+deixa **aberto** — falha silenciosa, e ninguém nota até vazar. Com guard global, esquecer o
+`@Public()` **quebra o endpoint** de forma imediata e visível. Entre duas formas de errar, escolhe-
+se a que grita.
+
+**Alternativa descartada.** `@UseGuards(JwtAuthGuard)` por controller. Mais explícito na leitura de
+cada arquivo, e não exige lembrar que existe um guard global. Descartada pelo modo de falha acima.
+
+**Custo assumido.** Um leitor que abre só o controller não vê que a rota está protegida — a
+informação está no módulo. E toda rota pública nova exige um decorator a mais. Aceitável: o custo é
+de legibilidade, e o da alternativa é de segurança.
+
+---
+
+## ADR-022 — Falhas de autenticação são indistinguíveis entre si
+
+**Contexto.** Um endpoint de login pode falhar por e-mail inexistente, senha errada ou e-mail
+malformado. Um endpoint protegido pode recusar por token ausente, expirado, com assinatura
+inválida ou do tipo errado.
+
+**Decisão.** Cada grupo produz **uma única resposta**: `InvalidCredentialsError` no login,
+**401 com corpo genérico** nas rotas protegidas. A mensagem nunca diz qual foi o motivo.
+
+Mais sutil, e igualmente necessário: o login **verifica a senha mesmo quando o e-mail não existe**,
+contra um hash descartável. Sem isso, "e-mail inexistente" responderia em microssegundos e "senha
+errada" levaria os ~300ms do bcrypt — diferença facilmente mensurável, que transforma o endpoint
+num oráculo de quais e-mails têm conta. **Igualar as mensagens sem igualar o tempo resolve só
+metade do problema.**
+
+**Alternativa descartada.** Mensagens específicas ("e-mail não cadastrado"), que são muito melhores
+de usar. Descartadas porque permitem enumerar a base de usuários — primeiro passo de credential
+stuffing. O ganho de UX não compensa entregar a lista de e-mails cadastrados.
+
+**Custo assumido.** Pior experiência para o usuário legítimo, que não sabe se errou o e-mail ou a
+senha. E o hash descartável gasta CPU numa requisição que já se sabe que vai falhar — inclusive
+sob ataque de força bruta, o que é um vetor de DoS. Mitigado pelo rate limiting da Etapa 5.
 
 ---
 

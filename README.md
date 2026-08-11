@@ -3,8 +3,8 @@
 > API de simulação de financiamento imobiliário com SAC, Price, CET e amortização
 > extraordinária.
 
-**Status:** em construção — Etapa 4 de 7. Núcleo financeiro, domínio, casos de uso e persistência
-prontos (**276 testes unitários + 37 de integração**, 98,8% de cobertura). Falta autenticação e a
+**Status:** em construção — Etapa 5 de 7. Núcleo financeiro, domínio, casos de uso, persistência e
+autenticação prontos (**334 testes unitários + 52 de integração**, 98,2% de cobertura). Falta a
 camada HTTP. Veja o [roadmap](#roadmap).
 
 ---
@@ -145,6 +145,57 @@ A garantia real é a constraint `UNIQUE`, e o repositório traduz o erro `P2002`
 mesmo `EmailAlreadyInUseError` — então as duas rotas produzem o mesmo erro de domínio e a mensagem
 nunca vaza o nome interno da constraint ([ADR-019](docs/decisions.md)).
 
+---
+
+## Autenticação
+
+bcrypt (custo 12) para senhas, JWT com access de 15 minutos e refresh de 7 dias, **segredos
+distintos** para cada um. Se o segredo de access vazar — e ele circula em muito mais requisições —,
+o atacante ainda não forja refresh tokens.
+
+**O guard é global**, e rotas públicas são marcadas com `@Public()`. A escolha é sobre o modo de
+falha: protegendo rota a rota, esquecer o decorator deixa um endpoint **aberto em silêncio**; com
+guard global, esquecer o `@Public()` **quebra o endpoint** na primeira chamada. Entre duas formas
+de errar, a que grita ([ADR-021](docs/decisions.md)).
+
+### Três armadilhas tratadas explicitamente
+
+**1. O bcrypt trunca em 72 bytes — em silêncio.** Verificado:
+
+```
+senha cadastrada: 72×'a' + "SENHA_SECRETA_DO_USUARIO"
+autentica com apenas 72×'a'?                    -> true
+autentica com 72×'a' + "LIXO_QUALQUER"?         -> true
+```
+
+Qualquer sufixo serve. Por isso senhas acima do limite são **rejeitadas**, não truncadas — e a
+contagem é em bytes, já que `á` ocupa 2 e emoji chegam a 4.
+
+**2. Um refresh token não pode virar credencial de acesso.** O payload carrega um campo `type`,
+verificado além da assinatura. Sem ele, um token de 7 dias abriria rotas protegidas — e o teste
+cobre inclusive o cenário em que os dois segredos são iguais por erro de configuração.
+
+**3. Mensagens iguais não bastam: o tempo também precisa ser.** O login verifica a senha **mesmo
+quando o e-mail não existe**, contra um hash descartável. Sem isso, "e-mail inexistente"
+responderia em microssegundos e "senha errada" levaria ~300ms — diferença mensurável que revela
+quais e-mails têm conta ([ADR-022](docs/decisions.md)).
+
+### Limitação conhecida: não há logout
+
+Os refresh tokens são **stateless**, então **não existe revogação**. Um token roubado vale até
+expirar (7 dias), não há como encerrar sessões remotamente, e por isso **nenhuma rota de logout foi
+implementada** — prometer e não entregar seria pior que a limitação.
+
+O que limita o dano é a vida curta do access token e a checagem, a cada refresh, de que o usuário
+ainda existe. O caminho para revogação está registrado na [ADR-006](docs/decisions.md).
+
+### Isolamento entre usuários, provado de ponta a ponta
+
+[`user-isolation.e2e-spec.ts`](test/integration/user-isolation.e2e-spec.ts) exercita a cadeia real
+— cadastro com bcrypt, login emitindo JWT assinado, `userId` extraído do `sub` do token, Postgres —
+e confirma que o usuário B não alcança o dado de A por **nenhuma** das rotas: resumo, tabela,
+exclusão ou listagem.
+
 As decisões técnicas e as alternativas descartadas estão registradas em
 [`docs/decisions.md`](docs/decisions.md).
 
@@ -235,7 +286,7 @@ O raciocínio completo, com as alternativas descartadas, está na
 - [x] **Etapa 1** — Núcleo financeiro em TDD: SAC, Price, encargos, CET, aporte extraordinário
 - [x] **Etapa 2** — Domínio e casos de uso com repositórios em memória
 - [x] **Etapa 3** — Persistência: Prisma, migrations, repositórios e testes de integração
-- [ ] **Etapa 4** — Autenticação JWT com access e refresh token
+- [x] **Etapa 4** — Autenticação JWT com access e refresh token
 - [ ] **Etapa 5** — Camada HTTP: controllers, validação, paginação, tratamento de erros
 - [ ] **Etapa 6** — Swagger, Dockerfile multi-stage, CI e deploy
 - [ ] **Etapa 7** — Extras: exportação CSV, cache, histórico de simulações
