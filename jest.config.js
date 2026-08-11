@@ -5,7 +5,14 @@ module.exports = {
   testRegex: '.*\\.spec\\.ts$',
   transform: { '^.+\\.ts$': 'ts-jest' },
   testEnvironment: 'node',
-  collectCoverageFrom: ['src/**/*.ts', '!src/main.ts', '!src/**/*.module.ts'],
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/main.ts',
+    '!src/**/*.module.ts',
+    // Barrels só re-exportam: contá-los mede organização de arquivo, não teste.
+    '!src/**/index.ts',
+    '!src/**/types.ts',
+  ],
   coverageDirectory: './coverage',
   moduleNameMapper: {
     '^@domain/(.*)$': '<rootDir>/src/domain/$1',
@@ -13,10 +20,15 @@ module.exports = {
     '^@infra/(.*)$': '<rootDir>/src/infra/$1',
     '^@shared/(.*)$': '<rootDir>/src/shared/$1',
   },
-  // Limiares globais modestos: a Etapa 0 ainda não tem lógica.
-  // O núcleo financeiro (domain/finance) exige 90%, conforme a Etapa 1 do roadmap —
-  // esse limiar entra junto com o primeiro teste da calculadora.
   coverageThreshold: {
     global: { branches: 60, functions: 60, lines: 60, statements: 60 },
+    // O núcleo financeiro é a razão de existir do projeto: 90% é exigência da Etapa 1
+    // do roadmap, verificada pelo CI e não pela minha palavra.
+    './src/domain/finance/': {
+      branches: 90,
+      functions: 90,
+      lines: 90,
+      statements: 90,
+    },
   },
 };
