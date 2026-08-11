@@ -30,5 +30,10 @@ module.exports = {
       lines: 90,
       statements: 90,
     },
+    // Entidades, value objects e casos de uso — o alvo do CLAUDE.md para
+    // domain/ e application/ é acima de 80%.
+    './src/domain/entities/': { branches: 90, functions: 90, lines: 95, statements: 95 },
+    './src/domain/value-objects/': { branches: 90, functions: 95, lines: 95, statements: 95 },
+    './src/application/': { branches: 85, functions: 90, lines: 90, statements: 90 },
   },
 };
