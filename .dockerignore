@@ -1,0 +1,39 @@
+# Tudo que não deve entrar no contexto de build.
+#
+# Além de deixar o build mais rápido, isto é uma barreira de segurança: sem a
+# linha do `.env`, um segredo local iria para dentro da imagem — e imagem é
+# distribuída.
+
+node_modules
+dist
+coverage
+
+# Segredos. NUNCA remover.
+.env
+.env.*
+!.env.example
+
+# Testes e ferramentas não são necessários na imagem
+test
+**/*.spec.ts
+**/*.e2e-spec.ts
+jest.config.js
+.eslintrc.js
+.prettierrc
+
+.git
+.github
+.gitignore
+.gitattributes
+docs
+README.md
+CLAUDE.md
+SPEC.md
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+*.log
+.idea
+.vscode
+.DS_Store
