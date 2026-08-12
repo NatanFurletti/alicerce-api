@@ -626,6 +626,85 @@ aplicação em execução: o login corta em 429 no limite configurado.
 
 ---
 
+## ADR-026 — Imagem Docker multi-stage, sem root e com init
+
+**Contexto.** A imagem precisa rodar em produção. Um `FROM node:20` copiando o projeto inteiro
+funcionaria, e é o que a maioria dos tutoriais mostra.
+
+**Decisão.** Três estágios — `deps`, `builder`, `runner` — e quatro escolhas que não são padrão:
+
+- **Usuário `node`, não root.** Um comprometimento da aplicação não vira root no container.
+- **`dumb-init` como PID 1.** O Node não é um init: sem ele, `SIGTERM` não propaga e o container
+  leva 10s para morrer em todo deploy, sem executar o shutdown gracioso do Nest — o que interrompe
+  requisições em andamento.
+- **`HEALTHCHECK` com o próprio Node**, em vez de instalar `curl` na imagem final.
+- **`app.listen(port, '0.0.0.0')`.** Dentro de um container, escutar só em loopback torna a
+  aplicação inalcançável de fora — e o sintoma é "conecta em local, não conecta em produção".
+
+**Alternativa descartada.** Imagem única sem multi-stage. Mais simples de ler, mas embarcaria
+TypeScript, Jest, ESLint e o código-fonte — superfície de ataque maior e imagem várias vezes mais
+pesada.
+
+**Custo assumido.** Dockerfile mais longo e três estágios para entender. O `bcrypt` tem binding
+nativo, então dois estágios precisam de `python3 make g++`, o que torna o build inicial lento.
+Trocar por argon2 não ajudaria — também é nativo.
+
+**Pendência honesta:** o build da imagem **não foi verificado localmente** nesta etapa. O Docker
+Desktop entrou em falha persistente (erro 500 no engine) durante o trabalho e não se recuperou. A
+estrutura foi validada estaticamente — estágios, referências `--from`, presença de `USER`,
+`HEALTHCHECK` e `ENTRYPOINT` — e o CI executa `docker build` mais um teste de inicialização do
+container a cada PR. Ainda assim, a primeira execução real da imagem acontecerá no CI, não aqui.
+
+---
+
+## ADR-027 — Swagger derivado dos decorators de validação
+
+**Contexto.** A Etapa 6 pede documentação com exemplos reais. Há duas formas: escrever um arquivo
+OpenAPI à mão, ou derivá-lo do código.
+
+**Decisão.** `@nestjs/swagger`, gerando o schema a partir das mesmas classes que o `ValidationPipe`
+usa. Foi exatamente o argumento que decidiu a ADR-007 a favor do class-validator: uma única
+declaração vira validação e documentação.
+
+A consequência que importa é que **a documentação não pode divergir do código**. Um campo novo sem
+`@ApiProperty` aparece sem descrição, mas nunca aparece um campo que a API não aceita — que é o
+modo de falha típico de documentação escrita à mão.
+
+As descrições carregam a informação de domínio que o avaliador precisa: que valores são centavos,
+que `NOMINAL` produz taxa maior que `EFFECTIVE`, que 400 é sintaxe e 422 é regra de negócio.
+
+**Alternativa descartada.** Arquivo OpenAPI versionado à mão. Dá controle total sobre o resultado e
+permite documentar antes de implementar. Descartado porque exige disciplina para manter em
+sincronia — e documentação desatualizada é pior que documentação ausente.
+
+**Custo assumido.** Mais decorators nos DTOs, e a versão 11.4.6 do `@nestjs/swagger` trouxe uma
+dependência (`js-yaml`) com CVE de severidade **high**. Resolvido fixando a 11.4.5 e sobrepondo
+`js-yaml` para 5.2.3 via `overrides` — `npm audit --omit=dev` volta a acusar zero. O CI passa a
+rodar a auditoria a cada PR para que isso não regrida em silêncio.
+
+---
+
+## ADR-028 — Render em vez de Vercel
+
+**Contexto.** O deploy precisa de aplicação e Postgres gerenciado. A preferência inicial era
+Vercel, onde já havia conta.
+
+**Decisão.** **Render.** Um `render.yaml` descreve app e banco; o Docker que já funciona vai
+direto, e tudo fica numa conta só.
+
+**Alternativa descartada.** Vercel, que é excelente para frontend e funções serverless, mas cria
+duas dificuldades reais aqui: não hospeda Postgres — exigiria Neon ou Supabase à parte —, e o
+Prisma em ambiente serverless abre uma conexão por invocação, esgotando o limite do Postgres sem
+um pooler (`@prisma/adapter-neon` ou Accelerate). Seriam três serviços em vez de um, e adaptações
+no bootstrap que só existiriam por causa da plataforma.
+
+**Custo assumido.** O plano gratuito do Render **hiberna após 15 minutos** sem tráfego, e a
+primeira requisição depois disso leva ~30 a 50 segundos. O Postgres gratuito **expira em 90 dias**.
+Ambos estão documentados em `docs/deploy.md`, com a recomendação de avisar no README em vez de
+deixar um avaliador achar que a API é lenta.
+
+---
+
 ## Modelo para novas entradas
 
 ```markdown

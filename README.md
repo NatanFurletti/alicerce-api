@@ -1,5 +1,11 @@
 # Alicerce
 
+[![CI](https://github.com/NatanFurletti/alicerce-api/actions/workflows/ci.yml/badge.svg)](https://github.com/NatanFurletti/alicerce-api/actions/workflows/ci.yml)
+![Node](https://img.shields.io/badge/node-20_LTS-339933?logo=node.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+![Testes](https://img.shields.io/badge/testes-358_unit%C3%A1rios_%2B_91_e2e-success)
+![Cobertura](https://img.shields.io/badge/cobertura-98.9%25-success)
+
 > API de simulação de financiamento imobiliário com SAC, Price, CET e amortização
 > extraordinária.
 
@@ -342,9 +348,28 @@ memória, o que o torna rápido e descartável.
 
 ---
 
+## Documentação interativa
+
+Swagger em **`/docs`**, gerado a partir dos mesmos decorators que validam a entrada
+([ADR-007](docs/decisions.md)) — uma única declaração vira validação e documentação, sem risco de
+a documentação descrever um contrato que o código não cumpre.
+
+<!-- TODO(Natan): gravar GIF do Swagger e substituir este bloco por:
+     ![Swagger](docs/img/swagger.gif) -->
+
+```bash
+npm run start:dev
+# abra http://localhost:3000/docs
+```
+
+Faça login em `POST /auth/login`, copie o `accessToken`, clique em **Authorize** e todas as rotas
+protegidas passam a funcionar direto pela interface. O token persiste entre recarregamentos.
+
+---
+
 ## Endpoints
 
-Todos implementados e cobertos por testes e2e. O Swagger entra na Etapa 6.
+Todos implementados, documentados no Swagger e cobertos por testes e2e.
 
 | Método | Rota | Descrição | Auth |
 |---|---|---|---|
@@ -422,6 +447,42 @@ resposta, porque um erro do Prisma vazaria nome de tabela e trecho de SQL.
 100 req/min por IP no geral, **5/min** em cadastro e login, **10/min** no preview público. O limite
 apertado no login também mitiga o custo de CPU assumido na [ADR-022](docs/decisions.md) — o
 endpoint gasta ~300ms de bcrypt mesmo quando o e-mail não existe.
+
+---
+
+## Docker e deploy
+
+O [`Dockerfile`](Dockerfile) é multi-stage em três etapas — dependências, compilação e execução.
+A imagem final não carrega TypeScript, Jest nem código-fonte: só o JavaScript compilado, as
+dependências de produção e o Prisma Client.
+
+Quatro decisões que valem apontar:
+
+- **Roda como usuário `node`**, não root. Um comprometimento da aplicação não vira root no
+  container.
+- **`dumb-init` como PID 1.** Sem um init adequado, o Node não recebe `SIGTERM` corretamente e o
+  container leva 10s para morrer em todo deploy, sem executar o shutdown gracioso do Nest.
+- **`HEALTHCHECK` sem `curl`**, usando o próprio Node — a imagem final não precisa carregar um
+  cliente HTTP só para isso.
+- **`migrate deploy` no start.** O mesmo comando que o CI executa, então uma migration quebrada
+  aparece no PR e não no servidor.
+
+```bash
+docker build -t alicerce-api .
+docker run -p 3000:3000 --env-file .env alicerce-api
+```
+
+### Deploy
+
+A infraestrutura está descrita em [`render.yaml`](render.yaml) — app e Postgres num arquivo
+versionado, sujeito a revisão em PR como qualquer outro código. Os segredos de JWT são gerados
+pelo próprio Render (`generateValue`) e nunca passam pelo repositório.
+
+O passo a passo está em [`docs/deploy.md`](docs/deploy.md), incluindo as limitações do plano
+gratuito — a mais visível é a **hibernação após 15 minutos sem tráfego**, que faz a primeira
+requisição levar ~30 segundos.
+
+> **Deploy pendente.** O link público entra aqui assim que a aplicação for publicada.
 
 ---
 
