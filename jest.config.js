@@ -29,6 +29,9 @@ module.exports = {
     '!src/infra/http/health/**',
     '!src/infra/http/tokens.ts',
     '!src/infra/http/throttler.config.ts',
+    // Configuração do Swagger: sem lógica própria, e o schema gerado é verificado
+    // por `swagger.e2e-spec.ts` contra a aplicação real.
+    '!src/infra/http/swagger.ts',
   ],
   coverageDirectory: './coverage',
   moduleNameMapper: {

@@ -29,6 +29,11 @@ jobs:
     env:
       DATABASE_URL: postgresql://alicerce:alicerce@localhost:5433/alicerce_test?schema=public
       DATABASE_URL_TEST: postgresql://alicerce:alicerce@localhost:5433/alicerce_test?schema=public
+      # Valores descartáveis, exclusivos do CI: precisam ter 32+ caracteres e ser
+      # diferentes entre si, senão o `loadEnv` derruba o boot. Os segredos reais são
+      # gerados pelo Render (`generateValue`) e nunca passam por aqui.
+      JWT_ACCESS_SECRET: ci-access-secret-com-tamanho-suficiente-1234
+      JWT_REFRESH_SECRET: ci-refresh-secret-DIFERENTE-e-longo-tambem-5678
 
     steps:
       - uses: actions/checkout@v4
@@ -65,3 +70,47 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # Auditoria só das dependências de PRODUÇÃO: uma vulnerabilidade em ferramenta
+      # de build não chega ao servidor, e reprovar o PR por ela geraria ruído.
+      - name: Auditoria de segurança (produção)
+        run: npm audit --omit=dev --audit-level=high
+
+  docker:
+    name: Build da imagem Docker
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Valida que a imagem de produção compila. Sem isto, um Dockerfile quebrado só
+      # apareceria no deploy — depois do merge, e para o usuário.
+      - name: Build da imagem
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: alicerce-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # A imagem sobe? Um erro de configuração de runtime — usuário sem permissão,
+      # caminho errado do dist — não apareceria no build, só na execução.
+      - name: Verificar que a imagem inicia
+        run: |
+          docker run -d --name alicerce-teste \
+            -e DATABASE_URL='postgresql://u:p@localhost:5432/db' \
+            -e JWT_ACCESS_SECRET='ci-access-secret-com-tamanho-suficiente-1234' \
+            -e JWT_REFRESH_SECRET='ci-refresh-secret-DIFERENTE-e-longo-tambem-5678' \
+            alicerce-api:ci
+          sleep 10
+          # Sem banco a migration falha, e é esse o comportamento esperado. O que se
+          # verifica aqui é que o container executou o entrypoint em vez de morrer por
+          # binário ausente ou permissão negada.
+          docker logs alicerce-teste 2>&1 | tail -20
+          docker logs alicerce-teste 2>&1 | grep -qiE 'prisma|migrat' \
+            || (echo 'A imagem não chegou a executar o entrypoint' && exit 1)
+          docker rm -f alicerce-teste
