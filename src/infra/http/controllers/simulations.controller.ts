@@ -10,6 +10,13 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 
 import { AddExtraPaymentUseCase } from '../../../application/use-cases/add-extra-payment';
@@ -48,6 +55,8 @@ import { PUBLIC_PREVIEW_THROTTLE } from '../throttler.config';
  * Sem ele, um id malformado chegaria ao Postgres e viraria erro de tipo — 500 em vez
  * de 400, e com mensagem do driver na resposta.
  */
+@ApiTags('simulations')
+@ApiBearerAuth('access-token')
 @Controller('simulations')
 export class SimulationsController {
   constructor(
@@ -60,6 +69,17 @@ export class SimulationsController {
     private readonly compareSystems: CompareSystemsUseCase,
   ) {}
 
+  @ApiOperation({
+    summary: 'Cria e calcula uma simulação',
+    description:
+      'Valida elegibilidade (LTV, renda, prazo), persiste e devolve o resumo com ' +
+      'CET. A tabela de amortização NÃO é persistida — é recalculada sob demanda ' +
+      '(ADR-003) e tem endpoint próprio.',
+  })
+  @ApiResponse({ status: 201, description: 'Criada.' })
+  @ApiResponse({ status: 400, description: 'VALIDATION_ERROR — entrada malformada.' })
+  @ApiResponse({ status: 401, description: 'UNAUTHORIZED.' })
+  @ApiResponse({ status: 422, description: 'Regra de negócio violada — ver `code`.' })
   @Post()
   async create(
     @CurrentUserId() userId: string,
@@ -68,6 +88,12 @@ export class SimulationsController {
     return this.createSimulation.execute({ ...dto, userId });
   }
 
+  @ApiOperation({
+    summary: 'Lista as simulações do usuário',
+    description: 'Paginada, mais recentes primeiro. Item enxuto: sem CET nem totais.',
+  })
+  @ApiResponse({ status: 200, description: 'Página de simulações.' })
+  @ApiResponse({ status: 401, description: 'UNAUTHORIZED.' })
   @Get()
   async list(
     @CurrentUserId() userId: string,
@@ -83,6 +109,14 @@ export class SimulationsController {
    * `/compare` como se `compare` fosse um id. Com `ParseUUIDPipe` isso viraria um 400
    * confuso em vez de executar a comparação.
    */
+  @ApiOperation({
+    summary: 'Compara SAC e Price',
+    description:
+      'Mesmos parâmetros, os dois sistemas lado a lado. Não persiste nada. O SAC ' +
+      'começa com parcela maior e cobra menos juros no total.',
+  })
+  @ApiResponse({ status: 200, description: 'Comparação.' })
+  @ApiResponse({ status: 422, description: 'Regra de negócio violada — ver `code`.' })
   @Post('compare')
   @HttpCode(HttpStatus.OK)
   compare(@Body() dto: CreateSimulationDto): CompareSystemsOutput {
@@ -96,6 +130,12 @@ export class SimulationsController {
    * qualquer um sem identificação, e cada chamada custa uma tabela de até 420 meses
    * mais uma busca de raiz para o CET.
    */
+  @ApiOperation({
+    summary: 'Cálculo público, sem autenticação',
+    description: 'Não persiste e não exige token. Rate limit de 10/min por IP.',
+  })
+  @ApiResponse({ status: 200, description: 'Comparação calculada.' })
+  @ApiResponse({ status: 429, description: 'RATE_LIMIT_EXCEEDED.' })
   @Public()
   @Throttle(PUBLIC_PREVIEW_THROTTLE)
   @Post('preview')
@@ -104,6 +144,14 @@ export class SimulationsController {
     return this.compareSystems.execute(dto);
   }
 
+  @ApiOperation({ summary: 'Resumo da simulação' })
+  @ApiParam({ name: 'id', format: 'uuid', description: 'Id da simulação.' })
+  @ApiResponse({ status: 200, description: 'Resumo com totais e CET.' })
+  @ApiResponse({ status: 401, description: 'UNAUTHORIZED.' })
+  @ApiResponse({
+    status: 404,
+    description: 'SIMULATION_NOT_FOUND — inexistente OU de outro usuário (ADR-015).',
+  })
   @Get(':id')
   async findOne(
     @CurrentUserId() userId: string,
@@ -113,6 +161,12 @@ export class SimulationsController {
   }
 
   /** Alias explícito de `GET /:id`, previsto no SPEC. */
+  @ApiOperation({ summary: 'Resumo (rota explícita do SPEC)' })
+  @ApiParam({ name: 'id', format: 'uuid', description: 'Id da simulação.' })
+  @ApiResponse({
+    status: 404,
+    description: 'SIMULATION_NOT_FOUND — inexistente OU de outro usuário (ADR-015).',
+  })
   @Get(':id/summary')
   async summary(
     @CurrentUserId() userId: string,
@@ -121,6 +175,17 @@ export class SimulationsController {
     return this.getSimulation.execute({ simulationId: id, userId });
   }
 
+  @ApiOperation({
+    summary: 'Tabela de amortização paginada',
+    description:
+      'Recalculada a cada leitura (ADR-003). `total` é o número de meses do contrato.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid', description: 'Id da simulação.' })
+  @ApiResponse({ status: 200, description: 'Página da tabela.' })
+  @ApiResponse({
+    status: 404,
+    description: 'SIMULATION_NOT_FOUND — inexistente OU de outro usuário (ADR-015).',
+  })
   @Get(':id/schedule')
   async schedule(
     @CurrentUserId() userId: string,
@@ -130,6 +195,22 @@ export class SimulationsController {
     return this.getSchedule.execute({ simulationId: id, userId, ...query });
   }
 
+  @ApiOperation({
+    summary: 'Registra aporte extraordinário',
+    description:
+      'Devolve juros economizados, encargos economizados e meses eliminados. ' +
+      'Validado ANTES de persistir: aporte inválido não deixa rastro no banco.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid', description: 'Id da simulação.' })
+  @ApiResponse({ status: 201, description: 'Aporte registrado.' })
+  @ApiResponse({
+    status: 404,
+    description: 'SIMULATION_NOT_FOUND — inexistente OU de outro usuário (ADR-015).',
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'EXTRA_PAYMENT_OUT_OF_RANGE ou EXTRA_PAYMENT_EXCEEDS_BALANCE.',
+  })
   @Post(':id/extra-payments')
   async createExtraPayment(
     @CurrentUserId() userId: string,
@@ -140,6 +221,13 @@ export class SimulationsController {
   }
 
   // 204: a exclusão não tem corpo de resposta.
+  @ApiOperation({ summary: 'Remove a simulação' })
+  @ApiParam({ name: 'id', format: 'uuid', description: 'Id da simulação.' })
+  @ApiResponse({ status: 204, description: 'Removida.' })
+  @ApiResponse({
+    status: 404,
+    description: 'SIMULATION_NOT_FOUND — inexistente OU de outro usuário (ADR-015).',
+  })
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(

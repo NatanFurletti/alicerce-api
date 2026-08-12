@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
 
@@ -14,6 +15,11 @@ import { MAX_PASSWORD_BYTES } from '../../auth/bcrypt-password-hasher';
 const MIN_PASSWORD_LENGTH = 8;
 
 export class RegisterDto {
+  @ApiProperty({
+    description: 'Nome do usuário.',
+    example: 'Natan Furletti',
+    maxLength: 200,
+  })
   @IsString()
   // Apara espaços antes de validar: "   " deve reprovar em `@MinLength(1)`, não
   // passar como nome de 3 caracteres.
@@ -22,12 +28,24 @@ export class RegisterDto {
   @MaxLength(200)
   name!: string;
 
+  @ApiProperty({
+    description: 'E-mail. Normalizado para minúsculas; precisa ser único.',
+    example: 'natan@example.com',
+  })
   @IsEmail()
   @MaxLength(320)
   email!: string;
 
   // O teto é o limite do bcrypt (72 bytes). Rejeitar aqui dá ao usuário uma mensagem
   // de validação clara, em vez de deixar o erro estourar no hashing.
+  @ApiProperty({
+    description:
+      'Senha. Mínimo de 8 caracteres; o máximo é o limite do bcrypt (72 bytes), ' +
+      'acima do qual ele truncaria em silêncio.',
+    example: 'senha-valida-123',
+    minLength: MIN_PASSWORD_LENGTH,
+    maxLength: MAX_PASSWORD_BYTES,
+  })
   @IsString()
   @MinLength(MIN_PASSWORD_LENGTH)
   @MaxLength(MAX_PASSWORD_BYTES)
@@ -43,14 +61,20 @@ export class RegisterDto {
  * `InvalidCredentialsError` (ADR-022).
  */
 export class LoginDto {
+  @ApiProperty({ example: 'natan@example.com' })
   @IsString()
   email!: string;
 
+  @ApiProperty({ example: 'senha-valida-123' })
   @IsString()
   password!: string;
 }
 
 export class RefreshDto {
+  @ApiProperty({
+    description: 'O refreshToken devolvido no login. Um access token aqui dá 401.',
+    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+  })
   @IsString()
   @MinLength(1)
   refreshToken!: string;

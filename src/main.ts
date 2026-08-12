@@ -7,6 +7,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from './app.module';
+import { setupSwagger } from './infra/http/swagger';
 import { loadEnv } from './shared/config/env';
 
 async function bootstrap(): Promise<void> {
@@ -29,8 +30,13 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  await app.listen(env.port);
+  setupSwagger(app);
+
+  // 0.0.0.0 e não localhost: dentro de um container, escutar só na interface de
+  // loopback torna a aplicação inalcançável de fora dele.
+  await app.listen(env.port, '0.0.0.0');
   Logger.log(`Alicerce ouvindo em http://localhost:${env.port}`, 'Bootstrap');
+  Logger.log(`Documentação em http://localhost:${env.port}/docs`, 'Bootstrap');
 }
 
 void bootstrap();
