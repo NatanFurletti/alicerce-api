@@ -19,6 +19,16 @@ module.exports = {
     '!src/infra/database/**',
     '!src/**/*.module.ts',
     '!src/domain/repositories/tokens.ts',
+    // Controllers, DTOs e decorators são exercitados pelos testes e2e, contra a
+    // aplicação real. O CLAUDE.md é explícito: não perseguir cobertura em
+    // controllers. O que tem lógica própria aqui — o exception filter — continua
+    // medido e testado unitariamente.
+    '!src/infra/http/controllers/**',
+    '!src/infra/http/dtos/**',
+    '!src/infra/http/decorators/**',
+    '!src/infra/http/health/**',
+    '!src/infra/http/tokens.ts',
+    '!src/infra/http/throttler.config.ts',
   ],
   coverageDirectory: './coverage',
   moduleNameMapper: {

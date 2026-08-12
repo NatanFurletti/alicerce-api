@@ -1,8 +1,14 @@
 {
-  "moduleFileExtensions": ["js", "json", "ts"],
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
   "rootDir": "..",
   "testRegex": ".*\\.e2e-spec\\.ts$",
-  "transform": { "^.+\\.ts$": "ts-jest" },
+  "transform": {
+    "^.+\\.ts$": "ts-jest"
+  },
   "testEnvironment": "node",
   "globalSetup": "<rootDir>/test/helpers/global-setup.ts",
   "testTimeout": 30000,
@@ -11,5 +17,8 @@
     "^@application/(.*)$": "<rootDir>/src/application/$1",
     "^@infra/(.*)$": "<rootDir>/src/infra/$1",
     "^@shared/(.*)$": "<rootDir>/src/shared/$1"
-  }
+  },
+  "setupFiles": [
+    "<rootDir>/test/helpers/setup-env.ts"
+  ]
 }
