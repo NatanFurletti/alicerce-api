@@ -553,6 +553,79 @@ e por um teste de integração que resolve cada token do container.
 
 ---
 
+## ADR-023 — 422 para regra de negócio, 400 para sintaxe
+
+**Contexto.** Uma requisição pode falhar por dois motivos distintos: o corpo está malformado
+(`termMonths: "trezentos"`), ou está bem formado mas viola uma regra (`termMonths: 500`, acima do
+prazo máximo). Tratar os dois como 400 é comum e perde informação.
+
+**Decisão.** **400** quando a validação sintática falha — tipo errado, campo faltando, valor fora
+da faixa aceitável. **422 Unprocessable Entity** quando o corpo foi compreendido e uma regra de
+negócio o rejeitou: LTV excedido, comprometimento de renda, aporte fora do prazo.
+
+A distinção diz ao cliente **o que fazer**: 400 significa "corrija o formato do envio", 422
+significa "os valores são válidos mas a operação não é permitida — mostre isso ao usuário".
+Erros de domínio sem entrada explícita na tabela caem em 422, e não em 500: um erro de domínio
+novo é sempre regra de negócio violada.
+
+**Alternativa descartada.** 400 para tudo, que é mais simples e amplamente usado. Descartada porque
+apaga a diferença entre erro do programador que integrou a API e situação legítima que o usuário
+final precisa ver.
+
+**Custo assumido.** 422 é menos conhecido que 400 e alguns clientes HTTP antigos o tratam
+genericamente. O `code` estável na resposta mitiga: quem integra reage a ele, não ao status.
+
+---
+
+## ADR-024 — `forbidNonWhitelisted` no ValidationPipe
+
+**Contexto.** A ADR-007 escolheu class-validator e registrou um risco: o tipo do DTO e seus
+decorators são declarações separadas, então um campo pode existir na classe sem validação e passar
+direto.
+
+**Decisão.** `whitelist: true` **e** `forbidNonWhitelisted: true`. O primeiro descarta propriedades
+não declaradas; o segundo **rejeita a requisição** quando elas existem.
+
+O ganho concreto é de autorização. `POST /simulations` deriva o dono do token, nunca do corpo — mas
+sem essa configuração, mandar `{"userId": "outro"}` seria silenciosamente ignorado, e um leitor do
+código não teria como saber se o campo é usado ou não. Com ela, a tentativa recebe
+`400 property userId should not exist`. Verificado contra a aplicação real.
+
+**Alternativa descartada.** Apenas `whitelist`, que descarta em silêncio. Mais tolerante com
+clientes que mandam campos a mais, e por isso mesmo pior: o cliente acha que enviou algo que a API
+ignorou.
+
+**Custo assumido.** Menos tolerância a evolução de cliente — um front que mande um campo novo antes
+de a API suportá-lo quebra. Em compensação, a quebra é imediata e explícita, e não um dado
+silenciosamente perdido.
+
+---
+
+## ADR-025 — Rate limiting relaxado em teste, verificado à parte
+
+**Contexto.** O rate limiting protege login, cadastro e o preview público. Mas a suíte e2e faz
+dezenas de cadastros do mesmo IP em segundos, e batia no teto de 5/min — 24 testes falharam com
+429 na primeira execução, nenhum deles relacionado a rate limiting.
+
+**Decisão.** Em `NODE_ENV=test`, os limites sobem para um valor efetivamente infinito
+(`throttler.config.ts`). O comportamento real é verificado em `throttler.e2e-spec.ts`, que sobe uma
+aplicação própria com os limites de produção e confirma o bloqueio, a persistência dentro da janela
+e o isolamento entre rotas.
+
+**Alternativa descartada.** Desligar o `ThrottlerGuard` em teste. Mais simples, mas deixaria a
+funcionalidade sem cobertura alguma — e é justamente o tipo de proteção que se descobre quebrada em
+produção.
+
+Também descartado usar IPs diferentes por teste: exigiria manipular cabeçalhos de proxy e testaria
+mais a configuração do supertest que a aplicação.
+
+**Custo assumido.** A suíte principal não exercita o rate limiting, então uma regressão na
+configuração de limites das rotas reais (um `@Throttle` removido por engano) não seria pega. Só o
+mecanismo é testado, não a fiação de cada rota. Verificado manualmente com `curl` contra a
+aplicação em execução: o login corta em 429 no limite configurado.
+
+---
+
 ## Modelo para novas entradas
 
 ```markdown

@@ -3,9 +3,9 @@
 > API de simulação de financiamento imobiliário com SAC, Price, CET e amortização
 > extraordinária.
 
-**Status:** em construção — Etapa 5 de 7. Núcleo financeiro, domínio, casos de uso, persistência e
-autenticação prontos (**334 testes unitários + 52 de integração**, 98,2% de cobertura). Falta a
-camada HTTP. Veja o [roadmap](#roadmap).
+**Status:** em construção — Etapa 6 de 7. **A API está funcional**: todos os endpoints
+implementados e testados (**358 testes unitários + 91 e2e**, 98,9% de cobertura). Falta Swagger,
+Dockerfile e deploy. Veja o [roadmap](#roadmap).
 
 ---
 
@@ -287,7 +287,7 @@ O raciocínio completo, com as alternativas descartadas, está na
 - [x] **Etapa 2** — Domínio e casos de uso com repositórios em memória
 - [x] **Etapa 3** — Persistência: Prisma, migrations, repositórios e testes de integração
 - [x] **Etapa 4** — Autenticação JWT com access e refresh token
-- [ ] **Etapa 5** — Camada HTTP: controllers, validação, paginação, tratamento de erros
+- [x] **Etapa 5** — Camada HTTP: controllers, validação, paginação, tratamento de erros
 - [ ] **Etapa 6** — Swagger, Dockerfile multi-stage, CI e deploy
 - [ ] **Etapa 7** — Extras: exportação CSV, cache, histórico de simulações
 
@@ -309,8 +309,8 @@ npm run prisma:deploy    # aplica as migrations
 npm run start:dev
 ```
 
-A aplicação sobe em `http://localhost:3000`. O único endpoint disponível hoje é
-`GET /health` — os demais entram a partir da Etapa 5, e o Swagger na Etapa 6.
+A aplicação sobe em `http://localhost:3000`, com [todos os endpoints](#endpoints) funcionais. A
+documentação interativa (Swagger) entra na Etapa 6.
 
 ```bash
 curl http://localhost:3000/health
@@ -344,18 +344,84 @@ memória, o que o torna rápido e descartável.
 
 ## Endpoints
 
-> Serão documentados conforme forem implementados. A referência completa fica no Swagger.
+Todos implementados e cobertos por testes e2e. O Swagger entra na Etapa 6.
 
-| Método | Rota | Descrição | Status |
+| Método | Rota | Descrição | Auth |
 |---|---|---|---|
-| POST | `/auth/register` | Cadastro de usuário | pendente |
-| POST | `/auth/login` | Autenticação | pendente |
-| POST | `/simulations` | Cria e calcula uma simulação | pendente |
-| GET | `/simulations/:id/schedule` | Tabela de amortização paginada | pendente |
-| GET | `/simulations/:id/summary` | Totais, CET e comparativo | pendente |
-| POST | `/simulations/:id/extra-payments` | Aporte extraordinário | pendente |
-| POST | `/simulations/compare` | SAC e Price lado a lado | pendente |
-| POST | `/simulations/preview` | Cálculo público, sem persistir | pendente |
+| POST | `/auth/register` | Cadastro de usuário | pública |
+| POST | `/auth/login` | Autenticação, devolve os dois tokens | pública |
+| POST | `/auth/refresh` | Renova o par de tokens | pública |
+| GET | `/me` | Perfil do usuário autenticado | 🔒 |
+| POST | `/simulations` | Cria, calcula e persiste | 🔒 |
+| GET | `/simulations` | Listagem paginada do próprio usuário | 🔒 |
+| GET | `/simulations/:id` | Resumo com totais e CET | 🔒 |
+| GET | `/simulations/:id/summary` | Idem, rota explícita do SPEC | 🔒 |
+| GET | `/simulations/:id/schedule` | Tabela de amortização paginada | 🔒 |
+| POST | `/simulations/:id/extra-payments` | Aporte extraordinário e impacto | 🔒 |
+| DELETE | `/simulations/:id` | Remove a simulação | 🔒 |
+| POST | `/simulations/compare` | SAC e Price lado a lado | 🔒 |
+| POST | `/simulations/preview` | Cálculo público, sem persistir | pública, 10/min |
+| GET | `/health` | Liveness probe | pública |
+
+### Exemplo real
+
+```bash
+# 1. cadastro e login
+curl -X POST localhost:3000/auth/register -H 'Content-Type: application/json' \
+  -d '{"name":"Natan","email":"demo@alicerce.dev","password":"senha-valida-123"}'
+
+TOKEN=$(curl -s -X POST localhost:3000/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"demo@alicerce.dev","password":"senha-valida-123"}' | jq -r .accessToken)
+
+# 2. simulação: imóvel de R$ 500 mil, 20% de entrada, 360 meses a 9,75% a.a.
+curl -X POST localhost:3000/simulations -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{
+    "propertyValueCents": 50000000, "downPaymentCents": 10000000,
+    "termMonths": 360, "annualRate": 0.0975,
+    "rateConvention": "EFFECTIVE", "amortizationSystem": "SAC",
+    "charges": {"mipMonthlyRate":0.00025,"dfiMonthlyRate":0.00005,"adminFeeCents":2500}
+  }'
+```
+
+Resultado desta chamada:
+
+| | |
+|---|---|
+| Financiado | R$ 400.000,00 |
+| Primeira parcela | R$ 4.374,32 |
+| Juros totais | R$ 561.935,83 |
+| Taxa contratada | 9,7500% a.a. |
+| **CET** | **10,3058% a.a.** |
+
+A diferença entre a taxa contratada e o CET são os encargos — MIP, DFI e taxa de administração.
+É exatamente o número que os simuladores de banco não mostram.
+
+### Formato de erro
+
+Toda falha devolve o mesmo envelope, com um `code` estável que o cliente pode tratar:
+
+```json
+{
+  "statusCode": 422,
+  "code": "LTV_EXCEEDED",
+  "message": "LTV de 98.00% excede o máximo de 80%. Aumente o valor da entrada.",
+  "path": "/simulations",
+  "timestamp": "2026-08-12T19:09:16.131Z"
+}
+```
+
+**400 é sintaxe, 422 é regra de negócio.** `termMonths: "trezentos"` dá 400 — corrija o envio.
+`termMonths: 500` dá 422 — o formato está certo, mas o prazo excede o máximo. A distinção diz ao
+cliente o que fazer ([ADR-023](docs/decisions.md)).
+
+Erros inesperados viram `500 INTERNAL_ERROR` com mensagem genérica: a original nunca vai para a
+resposta, porque um erro do Prisma vazaria nome de tabela e trecho de SQL.
+
+### Rate limiting
+
+100 req/min por IP no geral, **5/min** em cadastro e login, **10/min** no preview público. O limite
+apertado no login também mitiga o custo de CPU assumido na [ADR-022](docs/decisions.md) — o
+endpoint gasta ~300ms de bcrypt mesmo quando o e-mail não existe.
 
 ---
 
