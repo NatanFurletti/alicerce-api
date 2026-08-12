@@ -1,0 +1,59 @@
+# Infraestrutura como código para o Render.
+#
+# Descreve a aplicação e o banco num arquivo versionado, em vez de cliques na
+# interface. Quem clonar o repositório consegue reproduzir o ambiente inteiro —
+# e a configuração fica sujeita a revisão em PR como qualquer outro código.
+
+databases:
+  - name: alicerce-db
+    databaseName: alicerce
+    user: alicerce
+    plan: free
+    postgresMajorVersion: '16'
+
+services:
+  - type: web
+    name: alicerce-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # O Render injeta a porta; a aplicação lê de PORT (ver `loadEnv`).
+      - key: PORT
+        value: 3000
+
+      # Conexão preenchida automaticamente a partir do banco declarado acima.
+      # A string nunca aparece no repositório.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: alicerce-db
+          property: connectionString
+
+      # `generateValue` cria um valor aleatório na primeira publicação e o
+      # mantém entre deploys. Segredo forte sem ninguém precisar gerá-lo à mão —
+      # e sem risco de o placeholder do .env.example ir para produção, que o
+      # `loadEnv` recusaria de qualquer forma.
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+
+      - key: JWT_ACCESS_TTL
+        value: 15m
+      - key: JWT_REFRESH_TTL
+        value: 7d
+
+      # Parâmetros de mercado (ADR-014): valores de REFERÊNCIA, ajustáveis sem
+      # deploy de código.
+      - key: MAX_LTV_PERCENT
+        value: 80
+      - key: MAX_INCOME_COMMITMENT_PERCENT
+        value: 30
+      - key: MAX_TERM_MONTHS
+        value: 420
