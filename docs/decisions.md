@@ -731,6 +731,29 @@ produção (`--omit=dev`); as de desenvolvimento ficam fora do portão.
 
 ---
 
+## ADR-030 — Aplicação no Compose com configuração fixa e segredos locais
+
+**Contexto.** O critério de pronto da SPEC pede que um desconhecido suba a aplicação com um
+comando. O Compose subia só o Postgres; rodar a API exigia `.env`, Node, `npm install`, migrations
+e `start:dev` — cinco passos.
+
+**Decisão.** Serviço `app` no `docker-compose.yml`, construído pelo mesmo Dockerfile de produção,
+iniciando só depois do `healthcheck` do Postgres. A configuração fica fixa no próprio arquivo, sem
+interpolar o `.env`, com `NODE_ENV=development` e segredos de JWT marcados como locais. O serviço
+sobe por padrão: `docker compose up` entrega API + banco.
+
+**Alternativa descartada.** Interpolar o `.env`: o `DATABASE_URL` de desenvolvimento aponta para
+`localhost`, que dentro do container é o próprio container, e a conexão falharia. Também foi
+descartado deixar o `app` atrás de um `profile`: exigiria `--profile app`, um detalhe que o
+desconhecido não conhece. E `NODE_ENV=production` obrigaria a gerar segredos antes de subir.
+
+**Custo assumido.** Segredos de JWT versionados no repositório — aceitáveis porque só assinam
+tokens de um ambiente local descartável, como a senha `alicerce` do Postgres já fazia; produção
+usa os gerados pelo Render. Quem desenvolve passa a subir só os bancos, com
+`docker compose up -d postgres postgres-test`.
+
+---
+
 ## Modelo para novas entradas
 
 ```markdown

@@ -311,13 +311,30 @@ Itens não marcados **não estão implementados**.
 
 ## Como rodar
 
-Pré-requisitos: Docker e Node.js 20 LTS.
+### Só para ver funcionando: um comando
+
+Pré-requisito: Docker.
 
 ```bash
 git clone https://github.com/NatanFurletti/alicerce-api.git
 cd alicerce-api
+docker compose up
+```
+
+O Compose constrói a imagem, sobe o Postgres, espera o banco ficar saudável e inicia a API, que
+aplica as migrations no start. Não precisa de `.env` nem de Node instalado. Abra
+`http://localhost:3000` — a raiz redireciona para o Swagger.
+
+Os segredos de JWT desse modo estão no próprio `docker-compose.yml` e servem **apenas para uso
+local**; em produção são gerados pelo Render.
+
+### Para desenvolver: hot reload
+
+Pré-requisitos: Docker e Node.js 20 LTS.
+
+```bash
 cp .env.example .env
-docker compose up -d     # sobe Postgres (dev :5432 e teste :5433)
+docker compose up -d postgres postgres-test   # só os bancos (dev :5432 e teste :5433)
 npm install              # o postinstall já roda `prisma generate`
 npm run prisma:deploy    # aplica as migrations
 npm run start:dev
@@ -343,7 +360,7 @@ npm run typecheck     # tsc --noEmit
 
 ### Bancos de dados
 
-O Compose sobe **dois** containers Postgres 16:
+Além da aplicação, o Compose sobe **dois** containers Postgres 16:
 
 | Container | Porta | Banco | Persistência |
 |---|---|---|---|
@@ -475,10 +492,8 @@ Quatro decisões que valem apontar:
 - **`migrate deploy` no start.** O mesmo comando que o CI executa, então uma migration quebrada
   aparece no PR e não no servidor.
 
-```bash
-docker build -t alicerce-api .
-docker run -p 3000:3000 --env-file .env alicerce-api
-```
+Localmente, a imagem roda pelo serviço `app` do [`docker-compose.yml`](docker-compose.yml) — ver
+[Como rodar](#como-rodar).
 
 ### Deploy
 

@@ -1,4 +1,28 @@
 services:
+  # A aplicação completa com um comando: `docker compose up`.
+  # Para desenvolver com hot reload, suba só os bancos:
+  #   docker compose up -d postgres postgres-test
+  app:
+    build: .
+    container_name: alicerce-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '3000:3000'
+    # Valores fixos de propósito, sem interpolar o .env: o DATABASE_URL de lá aponta
+    # para localhost, que dentro do container é o próprio container. Na rede do
+    # compose, o banco é alcançado pelo nome do serviço.
+    environment:
+      # `development` aceita os segredos abaixo; em `production` o loadEnv exigiria
+      # segredos reais, e subir localmente deixaria de ser um comando só.
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://alicerce:alicerce@postgres:5432/alicerce?schema=public
+      # Apenas para uso local. Produção usa segredos gerados pelo Render (render.yaml).
+      JWT_ACCESS_SECRET: segredo-local-de-acesso-apenas-para-docker-compose
+      JWT_REFRESH_SECRET: segredo-local-de-refresh-apenas-para-docker-compose
+
   postgres:
     image: postgres:16-alpine
     container_name: alicerce-postgres
