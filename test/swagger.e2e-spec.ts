@@ -102,3 +102,19 @@ describe('Swagger (e2e)', () => {
     expect(spec.paths['/health']?.get?.tags).toContain('health');
   });
 });
+
+describe('GET / (e2e)', () => {
+  it('redireciona para /docs sem exigir autenticação', async () => {
+    // Quem recebe o link do deploy costuma abrir a raiz; um 404 ali parece API quebrada.
+    const response = await request(app.getHttpServer()).get('/').expect(302);
+
+    expect(response.headers.location).toBe('/docs');
+  });
+
+  it('não aparece no schema OpenAPI', async () => {
+    // A raiz é navegação, não contrato da API.
+    const spec = await fetchSpec();
+
+    expect(spec.paths).not.toHaveProperty('/');
+  });
+});
