@@ -12,6 +12,11 @@
 **[Testar a API ao vivo (Swagger)](https://alicerce-api-agln.onrender.com/docs)** — hospedada no
 plano gratuito do Render; a primeira requisição após inatividade pode levar até ~50 segundos.
 
+![Login, autorização e criação de uma simulação pelo Swagger](docs/img/swagger.gif)
+
+*Login, tentativa de criar uma simulação sem token (**401**), autorização com o `accessToken` e a
+mesma requisição aceita (**201**).*
+
 **Status:** Etapas 0 a 6 concluídas — todos os endpoints implementados e testados (**358 testes
 unitários + 100 e2e**, 98,9% de cobertura), documentados no Swagger e publicados. A Etapa 7
 (extras opcionais) ainda não começou. Veja o [roadmap](#roadmap).
@@ -357,13 +362,8 @@ Swagger em **`/docs`**, gerado a partir dos mesmos decorators que validam a entr
 ([ADR-007](docs/decisions.md)) — uma única declaração vira validação e documentação, sem risco de
 a documentação descrever um contrato que o código não cumpre.
 
-![Login, autorização e criação de uma simulação pelo Swagger](docs/img/swagger.gif)
-
-*No [ambiente publicado](https://alicerce-api-agln.onrender.com/docs): login, tentativa de criar
-uma simulação sem token (**401**), autorização com o `accessToken` e a mesma requisição
-aceita (**201**).*
-
-Para rodar localmente:
+A demonstração no [topo deste README](#alicerce) foi gravada no ambiente publicado. Para rodar
+localmente:
 
 ```bash
 npm run start:dev
