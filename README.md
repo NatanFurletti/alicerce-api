@@ -357,8 +357,13 @@ Swagger em **`/docs`**, gerado a partir dos mesmos decorators que validam a entr
 ([ADR-007](docs/decisions.md)) — uma única declaração vira validação e documentação, sem risco de
 a documentação descrever um contrato que o código não cumpre.
 
-<!-- TODO(Natan): gravar GIF do Swagger e substituir este bloco por:
-     ![Swagger](docs/img/swagger.gif) -->
+![Login, autorização e criação de uma simulação pelo Swagger](docs/img/swagger.gif)
+
+*No [ambiente publicado](https://alicerce-api-agln.onrender.com/docs): login, tentativa de criar
+uma simulação sem token (**401**), autorização com o `accessToken` e a mesma requisição
+aceita (**201**).*
+
+Para rodar localmente:
 
 ```bash
 npm run start:dev
