@@ -21,9 +21,7 @@ let app: INestApplication<App>;
 let prisma: PrismaService;
 
 beforeAll(async () => {
-  ({ app, prisma } = await createTestApp());
-  setupSwagger(app);
-  await app.init();
+  ({ app, prisma } = await createTestApp(setupSwagger));
 });
 
 afterAll(async () => {
