@@ -30,7 +30,7 @@ export function setupSwagger(app: INestApplication): void {
         '### Códigos de erro',
         '',
         'Toda falha devolve `{ statusCode, code, message, path, timestamp }`. O `code` é',
-        'estável e deve ser usado pelo cliente; a `message` é para humanos.',
+        'estável e deve ser usado pelo cliente.',
         '',
         '**400** indica erro de sintaxe (corrija o envio); **422** indica regra de negócio',
         'violada (os valores são válidos, mas a operação não é permitida).',

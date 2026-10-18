@@ -12,8 +12,13 @@ import { makePrismaService } from './database';
  * Usa `AppModule` de verdade — mesmos pipes, filtros e guards da produção. Substituir
  * o `PrismaService` é a única diferença, e ela é o que garante que nenhum teste
  * escreva no banco de desenvolvimento.
+ *
+ * `configure` roda ANTES do `init()`: o Nest registra o handler de 404 no init, e
+ * qualquer rota montada depois dele (como as do Swagger) fica inalcançável.
  */
-export async function createTestApp(): Promise<{
+export async function createTestApp(
+  configure?: (app: INestApplication<App>) => void,
+): Promise<{
   app: INestApplication<App>;
   prisma: PrismaService;
 }> {
@@ -37,6 +42,7 @@ export async function createTestApp(): Promise<{
     }),
   );
 
+  configure?.(app);
   await app.init();
 
   return { app, prisma };

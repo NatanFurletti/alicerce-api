@@ -28,6 +28,7 @@ import {
 import type { UserRepository } from '../../domain/repositories/user-repository';
 import { PASSWORD_HASHER, TOKEN_SERVICE } from '../auth/tokens';
 import { AuthController } from './controllers/auth.controller';
+import { RootController } from './controllers/root.controller';
 import { SimulationsController } from './controllers/simulations.controller';
 import { HealthController } from './health/health.controller';
 import { CLOCK, ELIGIBILITY_POLICY, ID_GENERATOR } from './tokens';
@@ -42,7 +43,7 @@ import { loadEligibilityPolicy } from './eligibility-policy.factory';
  * verbosidade é o preço de manter a camada de aplicação livre do framework.
  */
 @Module({
-  controllers: [AuthController, SimulationsController, HealthController],
+  controllers: [AuthController, SimulationsController, HealthController, RootController],
   providers: [
     { provide: CLOCK, useClass: SystemClock },
     { provide: ID_GENERATOR, useClass: UuidGenerator },

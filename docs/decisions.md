@@ -705,6 +705,32 @@ deixar um avaliador achar que a API é lenta.
 
 ---
 
+## ADR-029 — CVE transitiva do Prisma corrigida por `overrides`, não por versão major
+
+**Contexto.** A auditoria do CI passou a reprovar o PR por uma CVE **high** no `deepmerge-ts`
+(stack exhaustion ao mesclar objetos recursivos). Ele chega via `prisma` → `@prisma/config`, que
+fixa a versão exata 7.1.5. O `npm audit fix --force` propõe resolver com o Prisma 7 — versão major,
+com mudanças de configuração e de geração do client. As demais CVEs (multer, proxy-addr, qs,
+js-yaml) saíram com `npm audit fix`, sem quebra.
+
+**Decisão.** Sobrepor `deepmerge-ts` para `^8.0.2` via `overrides`, o mesmo mecanismo já usado
+para o `js-yaml` (ADR-027). O pacote é usado num único ponto — o `@prisma/config` mescla o
+arquivo de configuração do Prisma ao iniciar o CLI —, e a função chamada (`deepmerge`) mantém a
+mesma assinatura. Verificado com `prisma validate`, `generate`, `migrate deploy` (local e dentro
+da imagem Docker) e as suítes unitária e e2e completas.
+
+**Alternativa descartada.** Migrar para o Prisma 7 agora. É a correção definitiva, mas mistura uma
+atualização de ORM com risco próprio num PR de documentação e deploy. Também foi descartado
+rebaixar o `--audit-level` do CI: a vulnerabilidade não é alcançável por entrada HTTP (só processa
+a configuração do próprio projeto), mas afrouxar o portão silencia as próximas que forem.
+
+**Custo assumido.** O Prisma 6 roda com uma versão de dependência que o time do Prisma não
+testou. O risco é baixo pelo uso restrito, mas o override precisa ser **removido na migração para
+o Prisma 7**, senão vira configuração fantasma. A auditoria do CI cobre só dependências de
+produção (`--omit=dev`); as de desenvolvimento ficam fora do portão.
+
+---
+
 ## Modelo para novas entradas
 
 ```markdown

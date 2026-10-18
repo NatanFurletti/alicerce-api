@@ -3,15 +3,18 @@
 [![CI](https://github.com/NatanFurletti/alicerce-api/actions/workflows/ci.yml/badge.svg)](https://github.com/NatanFurletti/alicerce-api/actions/workflows/ci.yml)
 ![Node](https://img.shields.io/badge/node-20_LTS-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
-![Testes](https://img.shields.io/badge/testes-358_unit%C3%A1rios_%2B_91_e2e-success)
+![Testes](https://img.shields.io/badge/testes-358_unit%C3%A1rios_%2B_100_e2e-success)
 ![Cobertura](https://img.shields.io/badge/cobertura-98.9%25-success)
 
 > API de simulação de financiamento imobiliário com SAC, Price, CET e amortização
 > extraordinária.
 
-**Status:** em construção — Etapa 6 de 7. **A API está funcional**: todos os endpoints
-implementados e testados (**358 testes unitários + 91 e2e**, 98,9% de cobertura). Falta Swagger,
-Dockerfile e deploy. Veja o [roadmap](#roadmap).
+**[Testar a API ao vivo (Swagger)](https://alicerce-api-agln.onrender.com/docs)** — hospedada no
+plano gratuito do Render; a primeira requisição após inatividade pode levar até ~50 segundos.
+
+**Status:** Etapas 0 a 6 concluídas — todos os endpoints implementados e testados (**358 testes
+unitários + 100 e2e**, 98,9% de cobertura), documentados no Swagger e publicados. A Etapa 7
+(extras opcionais) ainda não começou. Veja o [roadmap](#roadmap).
 
 ---
 
@@ -294,7 +297,7 @@ O raciocínio completo, com as alternativas descartadas, está na
 - [x] **Etapa 3** — Persistência: Prisma, migrations, repositórios e testes de integração
 - [x] **Etapa 4** — Autenticação JWT com access e refresh token
 - [x] **Etapa 5** — Camada HTTP: controllers, validação, paginação, tratamento de erros
-- [ ] **Etapa 6** — Swagger, Dockerfile multi-stage, CI e deploy
+- [x] **Etapa 6** — Swagger, Dockerfile multi-stage, CI e deploy
 - [ ] **Etapa 7** — Extras: exportação CSV, cache, histórico de simulações
 
 Itens não marcados **não estão implementados**.
@@ -315,8 +318,8 @@ npm run prisma:deploy    # aplica as migrations
 npm run start:dev
 ```
 
-A aplicação sobe em `http://localhost:3000`, com [todos os endpoints](#endpoints) funcionais. A
-documentação interativa (Swagger) entra na Etapa 6.
+A aplicação sobe em `http://localhost:3000`, com [todos os endpoints](#endpoints) funcionais e a
+documentação interativa em `http://localhost:3000/docs`.
 
 ```bash
 curl http://localhost:3000/health
@@ -482,7 +485,9 @@ O passo a passo está em [`docs/deploy.md`](docs/deploy.md), incluindo as limita
 gratuito — a mais visível é a **hibernação após 15 minutos sem tráfego**, que faz a primeira
 requisição levar ~30 segundos.
 
-> **Deploy pendente.** O link público entra aqui assim que a aplicação for publicada.
+**Em produção:** [alicerce-api-agln.onrender.com/docs](https://alicerce-api-agln.onrender.com/docs)
+— o Swagger permite cadastrar um usuário, autenticar e criar simulações direto no navegador.
+A raiz `/` redireciona para o `/docs`.
 
 ---
 

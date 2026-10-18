@@ -21,9 +21,7 @@ let app: INestApplication<App>;
 let prisma: PrismaService;
 
 beforeAll(async () => {
-  ({ app, prisma } = await createTestApp());
-  setupSwagger(app);
-  await app.init();
+  ({ app, prisma } = await createTestApp(setupSwagger));
 });
 
 afterAll(async () => {
@@ -102,5 +100,21 @@ describe('Swagger (e2e)', () => {
     expect(spec.paths['/auth/login']?.post?.tags).toContain('auth');
     expect(spec.paths['/simulations']?.post?.tags).toContain('simulations');
     expect(spec.paths['/health']?.get?.tags).toContain('health');
+  });
+});
+
+describe('GET / (e2e)', () => {
+  it('redireciona para /docs sem exigir autenticação', async () => {
+    // Quem recebe o link do deploy costuma abrir a raiz; um 404 ali parece API quebrada.
+    const response = await request(app.getHttpServer()).get('/').expect(302);
+
+    expect(response.headers.location).toBe('/docs');
+  });
+
+  it('não aparece no schema OpenAPI', async () => {
+    // A raiz é navegação, não contrato da API.
+    const spec = await fetchSpec();
+
+    expect(spec.paths).not.toHaveProperty('/');
   });
 });
