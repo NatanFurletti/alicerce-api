@@ -28,6 +28,11 @@ services:
       - key: PORT
         value: 3000
 
+      # Origem do front (alicerce-web). `sync: false` faz o Render pedir o valor no
+      # painel em vez de versioná-lo: a URL do deploy do front só existe depois dele.
+      - key: CORS_ORIGINS
+        sync: false
+
       # Conexão preenchida automaticamente a partir do banco declarado acima.
       # A string nunca aparece no repositório.
       - key: DATABASE_URL

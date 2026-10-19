@@ -43,6 +43,13 @@ No painel: **alicerce-api** → **Environment**. Se por acaso coincidirem, gere 
 openssl rand -base64 32
 ```
 
+### Liberar o front (CORS)
+
+Ainda em **Environment**, preencha `CORS_ORIGINS` com a URL do front, sem barra final. Por
+exemplo, `https://alicerce-web.vercel.app`. Para mais de uma origem, separe com vírgula. Se ela
+ficar vazia, a API continua funcionando pelo Swagger e pelo curl, mas o navegador recusa as
+chamadas do front.
+
 ---
 
 ## 3. Confirmar que subiu

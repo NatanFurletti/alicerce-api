@@ -473,6 +473,13 @@ resposta, porque um erro do Prisma vazaria nome de tabela e trecho de SQL.
 apertado no login também mitiga o custo de CPU assumido na [ADR-022](docs/decisions.md) — o
 endpoint gasta ~300ms de bcrypt mesmo quando o e-mail não existe.
 
+### CORS
+
+Navegadores só chamam a API a partir das origens listadas em `CORS_ORIGINS` (separadas por
+vírgula, ex.: `http://localhost:3001`). A lista é explícita, nunca `*`. Uma origem malformada,
+como `http://localhost:3001/` com barra final, derruba o boot: o navegador nunca enviaria a origem
+nesse formato, e o erro passaria em silêncio ([ADR-031](docs/decisions.md)).
+
 ---
 
 ## Docker e deploy

@@ -18,6 +18,8 @@ services:
       # segredos reais, e subir localmente deixaria de ser um comando só.
       NODE_ENV: development
       PORT: 3000
+      # Front do alicerce-web rodando localmente com `npm run dev`.
+      CORS_ORIGINS: http://localhost:3001
       DATABASE_URL: postgresql://alicerce:alicerce@postgres:5432/alicerce?schema=public
       # Apenas para uso local. Produção usa segredos gerados pelo Render (render.yaml).
       JWT_ACCESS_SECRET: segredo-local-de-acesso-apenas-para-docker-compose

@@ -754,6 +754,26 @@ usa os gerados pelo Render. Quem desenvolve passa a subir só os bancos, com
 
 ---
 
+## ADR-031 — CORS por lista explícita de origens
+
+**Contexto.** O front (`alicerce-web`) roda em outra origem e chama a API direto do navegador.
+Sem CORS, o navegador bloqueia toda resposta, inclusive as de erro, e o front não consegue ler o
+`code` de um 422.
+
+**Decisão.** A variável `CORS_ORIGINS` recebe uma lista de origens exatas. O `loadEnv` valida cada
+item (`new URL(x).origin === x`) e derruba o boot se algum estiver malformado. Com a lista vazia,
+o CORS nem é registrado. Os métodos e headers liberados são só os que a API usa, e `credentials`
+fica desligado, porque o token viaja no header `Authorization`, não em cookie.
+
+**Alternativa descartada.** `origin: '*'`: qualquer site poderia ler respostas da API no navegador
+de um usuário. Também foi descartado aceitar a lista sem validação: `http://localhost:3001/` (com
+barra) nunca casa com o header `Origin`, e a falha só apareceria no console do navegador.
+
+**Custo assumido.** Cada novo ambiente do front (preview da Vercel, homologação) exige atualizar a
+variável na API. No Render, ela fica com `sync: false` e é preenchida no painel.
+
+---
+
 ## Modelo para novas entradas
 
 ```markdown

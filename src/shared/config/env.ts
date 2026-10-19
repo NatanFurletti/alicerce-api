@@ -26,6 +26,8 @@ export interface Env {
   port: number;
   databaseUrl: string;
   jwt: JwtEnv;
+  /** Origens autorizadas a chamar a API pelo navegador. Vazio = CORS desligado. */
+  corsOrigins: readonly string[];
 }
 
 /**
@@ -88,6 +90,39 @@ class MissingEnvVarError extends Error {
   }
 }
 
+/**
+ * Lê `CORS_ORIGINS`: lista de origens exatas separadas por vírgula.
+ *
+ * Cada item precisa ser uma origem pura (`esquema://host[:porta]`), sem barra final nem
+ * caminho. O navegador envia o header `Origin` exatamente nesse formato, e o CORS do
+ * Express compara por igualdade de texto: `http://localhost:3001/` nunca casaria, e a
+ * API recusaria o front sem nenhum erro no boot. Validar aqui transforma esse engano
+ * silencioso numa falha clara na inicialização.
+ */
+function parseCorsOrigins(raw: string | undefined, missing: string[]): string[] {
+  if (raw === undefined || raw.trim() === '') return [];
+
+  const origins = raw
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item !== '');
+
+  const invalid = origins.filter((origin) => !isExactOrigin(origin));
+  if (invalid.length > 0) {
+    missing.push(`CORS_ORIGINS (origens inválidas: ${invalid.join(', ')})`);
+  }
+
+  return origins;
+}
+
+function isExactOrigin(value: string): boolean {
+  try {
+    return new URL(value).origin === value;
+  } catch {
+    return false;
+  }
+}
+
 function parsePort(raw: string | undefined): number | null {
   if (raw === undefined || raw === '') return 3000;
   const port = Number(raw);
@@ -130,6 +165,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     refreshTtl: parseDuration(source.JWT_REFRESH_TTL, 'JWT_REFRESH_TTL', '7d', missing),
   };
 
+  const corsOrigins = parseCorsOrigins(source.CORS_ORIGINS, missing);
+
   // Segredos iguais anulam a separação entre access e refresh: um refresh token
   // passaria a ter assinatura válida na rota de acesso. A checagem de `type` ainda
   // barraria, mas depender de uma única linha de defesa aqui não é aceitável.
@@ -146,5 +183,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     port: port as number,
     databaseUrl: databaseUrl as string,
     jwt,
+    corsOrigins,
   };
 }
