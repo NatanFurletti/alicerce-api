@@ -10,6 +10,12 @@ import { Public } from '../../auth/jwt-auth.guard';
 import { AUTH_THROTTLE } from '../throttler.config';
 import { CurrentUserId } from '../decorators/current-user.decorator';
 import { LoginDto, RefreshDto, RegisterDto } from '../dtos/auth.dto';
+import {
+  LoginResponseDto,
+  TokenPairResponseDto,
+  UserResponseDto,
+} from '../dtos/responses/auth.response';
+import { ErrorResponseDto } from '../dtos/responses/error.response';
 
 /**
  * Rotas de autenticação.
@@ -39,13 +45,22 @@ export class AuthController {
     summary: 'Cadastra um usuário',
     description: 'Rate limit de 5/min por IP. A senha nunca é devolvida nem logada.',
   })
-  @ApiResponse({ status: 201, description: 'Usuário criado.' })
-  @ApiResponse({ status: 400, description: 'VALIDATION_ERROR — entrada malformada.' })
+  @ApiResponse({ status: 201, description: 'Usuário criado.', type: UserResponseDto })
+  @ApiResponse({
+    status: 400,
+    type: ErrorResponseDto,
+    description: 'VALIDATION_ERROR — entrada malformada.',
+  })
   @ApiResponse({
     status: 409,
+    type: ErrorResponseDto,
     description: 'EMAIL_ALREADY_IN_USE — e-mail já cadastrado.',
   })
-  @ApiResponse({ status: 429, description: 'RATE_LIMIT_EXCEEDED.' })
+  @ApiResponse({
+    status: 429,
+    type: ErrorResponseDto,
+    description: 'RATE_LIMIT_EXCEEDED.',
+  })
   @Public()
   @Throttle(AUTH_THROTTLE)
   @Post('auth/register')
@@ -65,9 +80,17 @@ export class AuthController {
       'Access token de 15 minutos e refresh de 7 dias. Senha errada e e-mail ' +
       'inexistente produzem a MESMA resposta, para não permitir enumerar a base.',
   })
-  @ApiResponse({ status: 200, description: 'Autenticado.' })
-  @ApiResponse({ status: 401, description: 'INVALID_CREDENTIALS.' })
-  @ApiResponse({ status: 429, description: 'RATE_LIMIT_EXCEEDED.' })
+  @ApiResponse({ status: 200, description: 'Autenticado.', type: LoginResponseDto })
+  @ApiResponse({
+    status: 401,
+    type: ErrorResponseDto,
+    description: 'INVALID_CREDENTIALS.',
+  })
+  @ApiResponse({
+    status: 429,
+    type: ErrorResponseDto,
+    description: 'RATE_LIMIT_EXCEEDED.',
+  })
   @Public()
   @Throttle(AUTH_THROTTLE)
   @HttpCode(HttpStatus.OK)
@@ -86,9 +109,14 @@ export class AuthController {
       'Aceita SOMENTE refresh token — um access token aqui devolve 401. Não há ' +
       'revogação: os tokens são stateless (ADR-006), e por isso não existe logout.',
   })
-  @ApiResponse({ status: 200, description: 'Novo par emitido.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Novo par emitido.',
+    type: TokenPairResponseDto,
+  })
   @ApiResponse({
     status: 401,
+    type: ErrorResponseDto,
     description: 'INVALID_TOKEN — inválido, expirado ou tipo errado.',
   })
   @Public()
@@ -103,8 +131,8 @@ export class AuthController {
   /** Protegido pelo guard global. O id vem do token, nunca do corpo da requisição. */
   @ApiOperation({ summary: 'Perfil do usuário autenticado' })
   @ApiBearerAuth('access-token')
-  @ApiResponse({ status: 200, description: 'Perfil.' })
-  @ApiResponse({ status: 401, description: 'UNAUTHORIZED.' })
+  @ApiResponse({ status: 200, description: 'Perfil.', type: UserResponseDto })
+  @ApiResponse({ status: 401, type: ErrorResponseDto, description: 'UNAUTHORIZED.' })
   @Get('me')
   async me(@CurrentUserId() userId: string): Promise<{
     id: string;

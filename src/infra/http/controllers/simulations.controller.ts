@@ -19,7 +19,10 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 
-import { AddExtraPaymentUseCase } from '../../../application/use-cases/add-extra-payment';
+import {
+  AddExtraPaymentUseCase,
+  type AddExtraPaymentOutput,
+} from '../../../application/use-cases/add-extra-payment';
 import {
   CompareSystemsUseCase,
   type CompareSystemsOutput,
@@ -43,6 +46,14 @@ import { CreateSimulationDto } from '../dtos/create-simulation.dto';
 import { AddExtraPaymentDto } from '../dtos/extra-payment.dto';
 import { PaginationQueryDto } from '../dtos/pagination.dto';
 import { PUBLIC_PREVIEW_THROTTLE } from '../throttler.config';
+import { ErrorResponseDto } from '../dtos/responses/error.response';
+import {
+  CompareResponseDto,
+  ExtraPaymentResponseDto,
+  SchedulePageDto,
+  SimulationPageDto,
+  SimulationResponseDto,
+} from '../dtos/responses/simulation.response';
 
 /**
  * Rotas de simulação.
@@ -76,10 +87,18 @@ export class SimulationsController {
       'CET. A tabela de amortização NÃO é persistida — é recalculada sob demanda ' +
       '(ADR-003) e tem endpoint próprio.',
   })
-  @ApiResponse({ status: 201, description: 'Criada.' })
-  @ApiResponse({ status: 400, description: 'VALIDATION_ERROR — entrada malformada.' })
-  @ApiResponse({ status: 401, description: 'UNAUTHORIZED.' })
-  @ApiResponse({ status: 422, description: 'Regra de negócio violada — ver `code`.' })
+  @ApiResponse({ status: 201, description: 'Criada.', type: SimulationResponseDto })
+  @ApiResponse({
+    status: 400,
+    type: ErrorResponseDto,
+    description: 'VALIDATION_ERROR — entrada malformada.',
+  })
+  @ApiResponse({ status: 401, type: ErrorResponseDto, description: 'UNAUTHORIZED.' })
+  @ApiResponse({
+    status: 422,
+    type: ErrorResponseDto,
+    description: 'Regra de negócio violada — ver `code`.',
+  })
   @Post()
   async create(
     @CurrentUserId() userId: string,
@@ -92,8 +111,12 @@ export class SimulationsController {
     summary: 'Lista as simulações do usuário',
     description: 'Paginada, mais recentes primeiro. Item enxuto: sem CET nem totais.',
   })
-  @ApiResponse({ status: 200, description: 'Página de simulações.' })
-  @ApiResponse({ status: 401, description: 'UNAUTHORIZED.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Página de simulações.',
+    type: SimulationPageDto,
+  })
+  @ApiResponse({ status: 401, type: ErrorResponseDto, description: 'UNAUTHORIZED.' })
   @Get()
   async list(
     @CurrentUserId() userId: string,
@@ -115,8 +138,12 @@ export class SimulationsController {
       'Mesmos parâmetros, os dois sistemas lado a lado. Não persiste nada. O SAC ' +
       'começa com parcela maior e cobra menos juros no total.',
   })
-  @ApiResponse({ status: 200, description: 'Comparação.' })
-  @ApiResponse({ status: 422, description: 'Regra de negócio violada — ver `code`.' })
+  @ApiResponse({ status: 200, description: 'Comparação.', type: CompareResponseDto })
+  @ApiResponse({
+    status: 422,
+    type: ErrorResponseDto,
+    description: 'Regra de negócio violada — ver `code`.',
+  })
   @Post('compare')
   @HttpCode(HttpStatus.OK)
   compare(@Body() dto: CreateSimulationDto): CompareSystemsOutput {
@@ -134,8 +161,16 @@ export class SimulationsController {
     summary: 'Cálculo público, sem autenticação',
     description: 'Não persiste e não exige token. Rate limit de 10/min por IP.',
   })
-  @ApiResponse({ status: 200, description: 'Comparação calculada.' })
-  @ApiResponse({ status: 429, description: 'RATE_LIMIT_EXCEEDED.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Comparação calculada.',
+    type: CompareResponseDto,
+  })
+  @ApiResponse({
+    status: 429,
+    type: ErrorResponseDto,
+    description: 'RATE_LIMIT_EXCEEDED.',
+  })
   @Public()
   @Throttle(PUBLIC_PREVIEW_THROTTLE)
   @Post('preview')
@@ -146,10 +181,15 @@ export class SimulationsController {
 
   @ApiOperation({ summary: 'Resumo da simulação' })
   @ApiParam({ name: 'id', format: 'uuid', description: 'Id da simulação.' })
-  @ApiResponse({ status: 200, description: 'Resumo com totais e CET.' })
-  @ApiResponse({ status: 401, description: 'UNAUTHORIZED.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Resumo com totais, CET e parâmetros informados.',
+    type: SimulationResponseDto,
+  })
+  @ApiResponse({ status: 401, type: ErrorResponseDto, description: 'UNAUTHORIZED.' })
   @ApiResponse({
     status: 404,
+    type: ErrorResponseDto,
     description: 'SIMULATION_NOT_FOUND — inexistente OU de outro usuário (ADR-015).',
   })
   @Get(':id')
@@ -163,8 +203,10 @@ export class SimulationsController {
   /** Alias explícito de `GET /:id`, previsto no SPEC. */
   @ApiOperation({ summary: 'Resumo (rota explícita do SPEC)' })
   @ApiParam({ name: 'id', format: 'uuid', description: 'Id da simulação.' })
+  @ApiResponse({ status: 200, description: 'Resumo.', type: SimulationResponseDto })
   @ApiResponse({
     status: 404,
+    type: ErrorResponseDto,
     description: 'SIMULATION_NOT_FOUND — inexistente OU de outro usuário (ADR-015).',
   })
   @Get(':id/summary')
@@ -181,9 +223,10 @@ export class SimulationsController {
       'Recalculada a cada leitura (ADR-003). `total` é o número de meses do contrato.',
   })
   @ApiParam({ name: 'id', format: 'uuid', description: 'Id da simulação.' })
-  @ApiResponse({ status: 200, description: 'Página da tabela.' })
+  @ApiResponse({ status: 200, description: 'Página da tabela.', type: SchedulePageDto })
   @ApiResponse({
     status: 404,
+    type: ErrorResponseDto,
     description: 'SIMULATION_NOT_FOUND — inexistente OU de outro usuário (ADR-015).',
   })
   @Get(':id/schedule')
@@ -202,13 +245,19 @@ export class SimulationsController {
       'Validado ANTES de persistir: aporte inválido não deixa rastro no banco.',
   })
   @ApiParam({ name: 'id', format: 'uuid', description: 'Id da simulação.' })
-  @ApiResponse({ status: 201, description: 'Aporte registrado.' })
+  @ApiResponse({
+    status: 201,
+    description: 'Aporte registrado.',
+    type: ExtraPaymentResponseDto,
+  })
   @ApiResponse({
     status: 404,
+    type: ErrorResponseDto,
     description: 'SIMULATION_NOT_FOUND — inexistente OU de outro usuário (ADR-015).',
   })
   @ApiResponse({
     status: 422,
+    type: ErrorResponseDto,
     description: 'EXTRA_PAYMENT_OUT_OF_RANGE ou EXTRA_PAYMENT_EXCEEDS_BALANCE.',
   })
   @Post(':id/extra-payments')
@@ -216,7 +265,7 @@ export class SimulationsController {
     @CurrentUserId() userId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AddExtraPaymentDto,
-  ): Promise<{ id: string; simulationId: string; newTermMonths: number }> {
+  ): Promise<AddExtraPaymentOutput> {
     return this.addExtraPayment.execute({ ...dto, simulationId: id, userId });
   }
 
@@ -226,6 +275,7 @@ export class SimulationsController {
   @ApiResponse({ status: 204, description: 'Removida.' })
   @ApiResponse({
     status: 404,
+    type: ErrorResponseDto,
     description: 'SIMULATION_NOT_FOUND — inexistente OU de outro usuário (ADR-015).',
   })
   @Delete(':id')

@@ -774,6 +774,29 @@ variável na API. No Render, ela fica com `sync: false` e é preenchida no paine
 
 ---
 
+## ADR-032 — Schemas de resposta no Swagger presos às interfaces por `implements`
+
+**Contexto.** O Swagger documentava as entradas, mas as respostas não tinham schema: os
+controllers devolvem interfaces TypeScript, que somem na compilação e que o `@nestjs/swagger`
+não consegue ler. O front gera os tipos a partir do OpenAPI, então toda resposta chegava lá
+como `unknown`.
+
+**Decisão.** As classes em `infra/http/dtos/responses/` servem só para documentação, e cada uma
+faz `implements` da interface de saída do caso de uso. Os controllers continuam devolvendo as
+interfaces. Um teste e2e reprova qualquer resposta 2xx com corpo que não tenha schema. Ao criar
+as classes, o `implements` revelou uma deriva real: o controller de aportes declarava um retorno
+sem o `summary`, que o caso de uso sempre devolveu.
+
+**Alternativa descartada.** O plugin de CLI do `@nestjs/swagger`, que infere schemas pelos tipos.
+Ele não lê interfaces, só classes, e ainda exigiria converter as saídas dos casos de uso em
+classes, levando um detalhe de documentação para a camada de aplicação (ADR-001). Também foi
+descartado devolver as classes nos controllers, porque isso pede um mapeamento a mais sem ganho.
+
+**Custo assumido.** São dois artefatos por resposta, a interface e a classe. O `implements`
+garante que a classe tem todos os campos da interface, mas não que não tenha campos a mais.
+
+---
+
 ## Modelo para novas entradas
 
 ```markdown

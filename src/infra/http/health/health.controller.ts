@@ -1,12 +1,17 @@
 import { Controller, Get } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiProperty, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { Public } from '../../auth/jwt-auth.guard';
 
-interface HealthResponse {
-  status: 'ok';
-  uptimeSeconds: number;
-  timestamp: string;
+class HealthResponse {
+  @ApiProperty({ enum: ['ok'] })
+  status!: 'ok';
+
+  @ApiProperty()
+  uptimeSeconds!: number;
+
+  @ApiProperty({ format: 'date-time' })
+  timestamp!: string;
 }
 
 /**
@@ -27,6 +32,7 @@ export class HealthController {
       'Deliberadamente NÃO verifica o banco: um healthcheck que falha quando o ' +
       'Postgres cai faria o orquestrador reiniciar uma aplicação saudável.',
   })
+  @ApiResponse({ status: 200, description: 'Processo de pé.', type: HealthResponse })
   @Public()
   @Get()
   check(): HealthResponse {

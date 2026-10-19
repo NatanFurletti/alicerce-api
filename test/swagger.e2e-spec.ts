@@ -10,7 +10,17 @@ import { createTestApp } from './helpers/app';
 
 interface OpenApiDocument {
   info: { title: string; version: string };
-  paths: Record<string, Record<string, { security?: unknown[]; tags?: string[] }>>;
+  paths: Record<
+    string,
+    Record<
+      string,
+      {
+        security?: unknown[];
+        tags?: string[];
+        responses: Record<string, { content?: Record<string, { schema: unknown }> }>;
+      }
+    >
+  >;
   components: {
     schemas: Record<string, { properties: Record<string, { example?: unknown }> }>;
     securitySchemes: Record<string, unknown>;
@@ -92,6 +102,33 @@ describe('Swagger (e2e)', () => {
     expect(dto?.propertyValueCents?.example).toBe(50_000_000);
     expect(dto?.termMonths?.example).toBe(360);
     expect(dto?.annualRate?.example).toBe(0.0975);
+  });
+
+  it('documenta o corpo de TODA resposta de sucesso com conteúdo', async () => {
+    // Clientes geram tipos a partir deste schema (ex.: openapi-typescript no front).
+    // Uma resposta 2xx sem schema vira `unknown` do outro lado, então este teste
+    // impede que um endpoint novo seja publicado sem contrato de saída.
+    const spec = await fetchSpec();
+
+    const semSchema = Object.entries(spec.paths).flatMap(([path, methods]) =>
+      Object.entries(methods).flatMap(([method, operation]) =>
+        Object.entries(operation.responses)
+          .filter(([status]) => status.startsWith('2') && status !== '204')
+          .filter(([, response]) => response.content === undefined)
+          .map(([status]) => `${method.toUpperCase()} ${path} ${status}`),
+      ),
+    );
+
+    expect(semSchema).toEqual([]);
+  });
+
+  it('documenta o envelope de erro', async () => {
+    const spec = await fetchSpec();
+
+    expect(spec.components.schemas.ErrorResponseDto?.properties).toHaveProperty('code');
+    expect(
+      spec.paths['/simulations']?.post?.responses['422']?.content?.['application/json'],
+    ).toBeDefined();
   });
 
   it('agrupa as rotas por tag', async () => {
