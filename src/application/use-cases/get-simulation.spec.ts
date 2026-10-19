@@ -34,6 +34,27 @@ describe('GetSimulationUseCase', () => {
     expect(result.summary.months).toBe(360);
   });
 
+  it('devolve os parâmetros persistidos, omitindo a renda quando não foi informada', async () => {
+    const repository = new InMemorySimulationRepository();
+    await repository.create(makeSimulation('sim-1', 'user-1'));
+
+    const result = await new GetSimulationUseCase(repository).execute({
+      simulationId: 'sim-1',
+      userId: 'user-1',
+    });
+
+    expect(result.input).toEqual({
+      propertyValueCents: 50_000_000,
+      downPaymentCents: 10_000_000,
+      termMonths: 360,
+      annualRate: 0.0975,
+      rateConvention: 'EFFECTIVE',
+      amortizationSystem: 'SAC',
+      charges: { mipMonthlyRate: 0.00025, dfiMonthlyRate: 0.00005, adminFeeCents: 2500 },
+    });
+    expect(result.input).not.toHaveProperty('monthlyIncomeCents');
+  });
+
   it('ESCOPO: usuário A não acessa simulação de B', async () => {
     // A garantia central do SPEC seção 4, exercitada no nível do caso de uso — antes
     // mesmo de existir HTTP, guard ou JWT.

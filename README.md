@@ -404,7 +404,7 @@ Todos implementados, documentados no Swagger e cobertos por testes e2e.
 | GET | `/me` | Perfil do usuário autenticado | 🔒 |
 | POST | `/simulations` | Cria, calcula e persiste | 🔒 |
 | GET | `/simulations` | Listagem paginada do próprio usuário | 🔒 |
-| GET | `/simulations/:id` | Resumo com totais e CET | 🔒 |
+| GET | `/simulations/:id` | Resumo com totais, CET e os parâmetros informados | 🔒 |
 | GET | `/simulations/:id/summary` | Idem, rota explícita do SPEC | 🔒 |
 | GET | `/simulations/:id/schedule` | Tabela de amortização paginada | 🔒 |
 | POST | `/simulations/:id/extra-payments` | Aporte extraordinário e impacto | 🔒 |

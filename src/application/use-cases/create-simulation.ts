@@ -19,8 +19,18 @@ import type { IdGenerator } from '../ports/id-generator';
  * contrato com a camada HTTP, que só trafega tipos primitivos. Converter para value
  * object é responsabilidade do caso de uso — é aqui que o dado bruto vira domínio.
  */
-export interface CreateSimulationInput {
+export interface CreateSimulationInput extends SimulationParameters {
   readonly userId: string;
+}
+
+/**
+ * Os parâmetros que definem uma simulação, no mesmo formato do corpo de
+ * `POST /simulations`.
+ *
+ * Tipo próprio porque aparece nos dois sentidos: na entrada (com o `userId`) e ecoado
+ * na saída. Com uma única definição, entrada e eco não divergem.
+ */
+export interface SimulationParameters {
   readonly propertyValueCents: number;
   readonly downPaymentCents: number;
   readonly termMonths: number;
@@ -46,9 +56,16 @@ export interface CreateSimulationOutput {
   readonly monthlyRate: number;
   readonly ltv: number;
   readonly firstInstallmentCents: number;
+  readonly lastInstallmentCents: number;
   readonly summary: ScheduleTotals;
   readonly cet: CetResult;
   readonly createdAt: Date;
+  /**
+   * Os parâmetros informados na criação. Permitem ao cliente reabrir a simulação
+   * sabendo qual sistema, renda e encargos foram usados, e reenviá-los a `/compare`
+   * sem guardar nada do lado dele.
+   */
+  readonly input: SimulationParameters;
 }
 
 /**
@@ -111,8 +128,29 @@ export function toOutput(simulation: Simulation): CreateSimulationOutput {
     monthlyRate: simulation.monthlyRate,
     ltv: simulation.ltv,
     firstInstallmentCents: schedule[0]?.totalPayment ?? 0,
+    lastInstallmentCents: schedule.at(-1)?.totalPayment ?? 0,
     summary: simulation.summarize(),
     cet: simulation.calculateCet(),
     createdAt: simulation.createdAt,
+    input: toParameters(simulation),
+  };
+}
+
+/**
+ * A renda só entra quando foi informada. Omitir a chave, em vez de mandar `null`,
+ * mantém o eco idêntico ao corpo que o cliente enviou.
+ */
+function toParameters(simulation: Simulation): SimulationParameters {
+  return {
+    propertyValueCents: simulation.propertyValue.cents,
+    downPaymentCents: simulation.downPayment.cents,
+    termMonths: simulation.termMonths,
+    annualRate: simulation.annualRate,
+    rateConvention: simulation.rateConvention,
+    amortizationSystem: simulation.amortizationSystem,
+    ...(simulation.monthlyIncome !== undefined && {
+      monthlyIncomeCents: simulation.monthlyIncome.cents,
+    }),
+    charges: { ...simulation.charges },
   };
 }

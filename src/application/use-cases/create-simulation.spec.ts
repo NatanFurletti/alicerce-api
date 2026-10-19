@@ -60,6 +60,26 @@ describe('CreateSimulationUseCase', () => {
     expect(result.cet.annualRate).toBeGreaterThan(input.annualRate);
   });
 
+  it('ecoa os parâmetros de entrada, no formato aceito por POST /simulations', async () => {
+    // Sem isso, quem reabre uma simulação não sabe qual sistema ou renda foi usado,
+    // e não consegue repetir os mesmos parâmetros em /compare.
+    const { useCase } = makeUseCase();
+
+    const result = await useCase.execute(input);
+
+    const { userId: _userId, ...parameters } = input;
+    expect(result.input).toEqual(parameters);
+  });
+
+  it('devolve a última parcela: no SAC, menor que a primeira', async () => {
+    const { useCase } = makeUseCase();
+
+    const result = await useCase.execute(input);
+
+    expect(result.lastInstallmentCents).toBeGreaterThan(0);
+    expect(result.lastInstallmentCents).toBeLessThan(result.firstInstallmentCents);
+  });
+
   it('usa o relógio injetado, não a hora do sistema', async () => {
     // Determinismo no teste, e a possibilidade de congelar o tempo em cenários de
     // borda. Chamar `new Date()` dentro do caso de uso tornaria isso impossível.
