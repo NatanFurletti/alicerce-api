@@ -21,6 +21,7 @@ describe('loadEnv', () => {
         refreshSecret: REFRESH_SECRET,
         refreshTtl: '7d',
       },
+      corsOrigins: [],
     });
   });
 
@@ -101,6 +102,37 @@ describe('loadEnv', () => {
         expect(() => loadEnv({ ...valid, JWT_ACCESS_TTL: ttl })).toThrow(
           /JWT_ACCESS_TTL/,
         );
+      }
+    });
+  });
+  describe('CORS_ORIGINS', () => {
+    it('sem a variável, nenhuma origem é liberada', () => {
+      expect(loadEnv({ ...valid }).corsOrigins).toEqual([]);
+      expect(loadEnv({ ...valid, CORS_ORIGINS: '' }).corsOrigins).toEqual([]);
+    });
+
+    it('aceita lista separada por vírgula, ignorando espaços e itens vazios', () => {
+      const env = loadEnv({
+        ...valid,
+        CORS_ORIGINS: ' http://localhost:3001 , https://alicerce-web.vercel.app,',
+      });
+
+      expect(env.corsOrigins).toEqual([
+        'http://localhost:3001',
+        'https://alicerce-web.vercel.app',
+      ]);
+    });
+
+    it('rejeita valor que não é uma origem exata', () => {
+      // Barra final, caminho ou curinga nunca casariam com o header Origin, que o
+      // navegador envia sem eles: a configuração falharia em silêncio.
+      for (const CORS_ORIGINS of [
+        'localhost:3001',
+        'http://localhost:3001/',
+        'https://app.com/rota',
+        '*',
+      ]) {
+        expect(() => loadEnv({ ...valid, CORS_ORIGINS })).toThrow(/CORS_ORIGINS/);
       }
     });
   });

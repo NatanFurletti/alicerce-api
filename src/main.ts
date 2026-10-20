@@ -7,6 +7,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from './app.module';
+import { setupCors } from './infra/http/cors';
 import { setupSwagger } from './infra/http/swagger';
 import { loadEnv } from './shared/config/env';
 
@@ -30,6 +31,7 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
+  setupCors(app, env.corsOrigins);
   setupSwagger(app);
 
   // 0.0.0.0 e não localhost: dentro de um container, escutar só na interface de

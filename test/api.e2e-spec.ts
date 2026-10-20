@@ -199,6 +199,7 @@ describe('API (e2e)', () => {
       expect(response.body).toMatchObject({
         financedAmountCents: 40_000_000,
         termMonths: 360,
+        input: simulacao,
       });
       expect(
         (response.body as { cet: { annualRate: number } }).cet.annualRate,
@@ -286,6 +287,20 @@ describe('API (e2e)', () => {
         .expect(200);
 
       expect(response.body).toMatchObject({ id, termMonths: 360 });
+    });
+
+    it('devolve os parâmetros persistidos, idênticos ao corpo enviado na criação', async () => {
+      // Prova a ida e volta completa pelo Prisma: centavos em BigInt, taxas em
+      // Decimal e renda ausente (NULL no banco) voltam exatamente como entraram.
+      const token = await signUp();
+      const id = await createSimulation(token);
+
+      const response = await request(app.getHttpServer())
+        .get(`/simulations/${id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect((response.body as { input: unknown }).input).toEqual(simulacao);
     });
 
     it('id malformado -> 400 antes de tocar o banco', async () => {

@@ -731,6 +731,72 @@ produção (`--omit=dev`); as de desenvolvimento ficam fora do portão.
 
 ---
 
+## ADR-030 — Aplicação no Compose com configuração fixa e segredos locais
+
+**Contexto.** O critério de pronto da SPEC pede que um desconhecido suba a aplicação com um
+comando. O Compose subia só o Postgres; rodar a API exigia `.env`, Node, `npm install`, migrations
+e `start:dev` — cinco passos.
+
+**Decisão.** Serviço `app` no `docker-compose.yml`, construído pelo mesmo Dockerfile de produção,
+iniciando só depois do `healthcheck` do Postgres. A configuração fica fixa no próprio arquivo, sem
+interpolar o `.env`, com `NODE_ENV=development` e segredos de JWT marcados como locais. O serviço
+sobe por padrão: `docker compose up` entrega API + banco.
+
+**Alternativa descartada.** Interpolar o `.env`: o `DATABASE_URL` de desenvolvimento aponta para
+`localhost`, que dentro do container é o próprio container, e a conexão falharia. Também foi
+descartado deixar o `app` atrás de um `profile`: exigiria `--profile app`, um detalhe que o
+desconhecido não conhece. E `NODE_ENV=production` obrigaria a gerar segredos antes de subir.
+
+**Custo assumido.** Segredos de JWT versionados no repositório — aceitáveis porque só assinam
+tokens de um ambiente local descartável, como a senha `alicerce` do Postgres já fazia; produção
+usa os gerados pelo Render. Quem desenvolve passa a subir só os bancos, com
+`docker compose up -d postgres postgres-test`.
+
+---
+
+## ADR-031 — CORS por lista explícita de origens
+
+**Contexto.** O front (`alicerce-web`) roda em outra origem e chama a API direto do navegador.
+Sem CORS, o navegador bloqueia toda resposta, inclusive as de erro, e o front não consegue ler o
+`code` de um 422.
+
+**Decisão.** A variável `CORS_ORIGINS` recebe uma lista de origens exatas. O `loadEnv` valida cada
+item (`new URL(x).origin === x`) e derruba o boot se algum estiver malformado. Com a lista vazia,
+o CORS nem é registrado. Os métodos e headers liberados são só os que a API usa, e `credentials`
+fica desligado, porque o token viaja no header `Authorization`, não em cookie.
+
+**Alternativa descartada.** `origin: '*'`: qualquer site poderia ler respostas da API no navegador
+de um usuário. Também foi descartado aceitar a lista sem validação: `http://localhost:3001/` (com
+barra) nunca casa com o header `Origin`, e a falha só apareceria no console do navegador.
+
+**Custo assumido.** Cada novo ambiente do front (preview da Vercel, homologação) exige atualizar a
+variável na API. No Render, ela fica com `sync: false` e é preenchida no painel.
+
+---
+
+## ADR-032 — Schemas de resposta no Swagger presos às interfaces por `implements`
+
+**Contexto.** O Swagger documentava as entradas, mas as respostas não tinham schema: os
+controllers devolvem interfaces TypeScript, que somem na compilação e que o `@nestjs/swagger`
+não consegue ler. O front gera os tipos a partir do OpenAPI, então toda resposta chegava lá
+como `unknown`.
+
+**Decisão.** As classes em `infra/http/dtos/responses/` servem só para documentação, e cada uma
+faz `implements` da interface de saída do caso de uso. Os controllers continuam devolvendo as
+interfaces. Um teste e2e reprova qualquer resposta 2xx com corpo que não tenha schema. Ao criar
+as classes, o `implements` revelou uma deriva real: o controller de aportes declarava um retorno
+sem o `summary`, que o caso de uso sempre devolveu.
+
+**Alternativa descartada.** O plugin de CLI do `@nestjs/swagger`, que infere schemas pelos tipos.
+Ele não lê interfaces, só classes, e ainda exigiria converter as saídas dos casos de uso em
+classes, levando um detalhe de documentação para a camada de aplicação (ADR-001). Também foi
+descartado devolver as classes nos controllers, porque isso pede um mapeamento a mais sem ganho.
+
+**Custo assumido.** São dois artefatos por resposta, a interface e a classe. O `implements`
+garante que a classe tem todos os campos da interface, mas não que não tenha campos a mais.
+
+---
+
 ## Modelo para novas entradas
 
 ```markdown
